@@ -20,9 +20,13 @@ final class AppStore: NSObject, ObservableObject {
     @Published var activeFocus: ActiveFocus? { didSet { save() } }
     @Published var focusSessions: [FocusSession] = [] { didSet { save() } }
     @Published var parkingNotes: [ParkingNote] = [] { didSet { save() } }
+    @Published var dayItems: [DayItem] = [] { didSet { save() } }
+    @Published var dayCapacities: [DayCapacity] = [] { didSet { save() } }
     @Published var focusJustCompleted = false
+    @Published var lastRewardMessage: String? = nil
 
     let activityMonitor = AppActivityMonitor()
+    let calendarService = CalendarService()
 
     private var isLoading = true
     private var heartbeat: Timer?
@@ -40,12 +44,15 @@ final class AppStore: NSObject, ObservableObject {
         activeFocus = state.activeFocus
         focusSessions = state.focusSessions
         parkingNotes = state.parkingNotes
+        dayItems = state.dayItems
+        dayCapacities = state.dayCapacities
 
         activityMonitor.trackingEnabled = automaticAppTrackingEnabled
         activityMonitor.onActivityEnded = { [weak self] name, bundle, start, end in
             self?.recordAppActivity(name: name, bundle: bundle, start: start, end: end)
         }
         activityMonitor.start()
+        calendarService.refresh()
 
         heartbeat = Timer.scheduledTimer(
             timeInterval: 1.0,
@@ -239,6 +246,94 @@ final class AppStore: NSObject, ObservableObject {
         finishActiveFocus(completed: false, stopTimerIfStarted: true)
     }
 
+    var todayItems: [DayItem] {
+        dayItems.filter { Calendar.current.isDateInToday($0.targetDate) }
+    }
+
+    var tomorrowItems: [DayItem] {
+        guard let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) else { return [] }
+        return dayItems.filter { Calendar.current.isDate($0.targetDate, inSameDayAs: tomorrow) }
+    }
+
+    var completedTodayItems: [DayItem] {
+        todayItems.filter { $0.isDone }
+    }
+
+    var openTodayItems: [DayItem] {
+        todayItems.filter { !$0.isDone }
+    }
+
+    var completedFocusToday: [FocusSession] {
+        focusSessions.filter {
+            $0.phase == .focus &&
+            $0.completed &&
+            Calendar.current.isDateInToday($0.start)
+        }
+    }
+
+    var todayFocusMessage: String {
+        let count = completedFocusToday.count
+        switch count {
+        case 0:
+            return "Nog geen afgerond focusblok — dat zegt niets over de waarde van je dag."
+        case 1:
+            return "Je hebt vandaag al een goed focusmoment neergezet."
+        case 2...3:
+            return "Je hebt vandaag meerdere sterke focusmomenten gehad."
+        default:
+            return "Je hebt vandaag opvallend veel geconcentreerde blokken opgebouwd."
+        }
+    }
+
+    func dayCapacity(for date: Date) -> Int? {
+        dayCapacities.first(where: { Calendar.current.isDate($0.date, inSameDayAs: date) })?.availableWorkMinutes
+    }
+
+    func setDayCapacity(hours: Int?, for date: Date = Date()) {
+        dayCapacities.removeAll { Calendar.current.isDate($0.date, inSameDayAs: date) }
+        if let hours {
+            dayCapacities.append(DayCapacity(date: Calendar.current.startOfDay(for: date), availableWorkMinutes: hours * 60))
+        }
+    }
+
+    func addDayItem(title: String, plannedMinutes: Int? = nil, targetDate: Date = Date()) {
+        let cleaned = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return }
+        dayItems.append(
+            DayItem(
+                title: cleaned,
+                targetDate: Calendar.current.startOfDay(for: targetDate),
+                plannedMinutes: plannedMinutes
+            )
+        )
+    }
+
+    func completeDayItem(_ item: DayItem) {
+        guard let index = dayItems.firstIndex(where: { $0.id == item.id }) else { return }
+        dayItems[index].isDone = true
+        dayItems[index].completedAt = Date()
+        lastRewardMessage = "Mooi. Dit heb je gedaan."
+        playRewardSound()
+    }
+
+    func reopenDayItem(_ item: DayItem) {
+        guard let index = dayItems.firstIndex(where: { $0.id == item.id }) else { return }
+        dayItems[index].isDone = false
+        dayItems[index].completedAt = nil
+    }
+
+    func moveDayItemToTomorrow(_ item: DayItem) {
+        guard let index = dayItems.firstIndex(where: { $0.id == item.id }),
+              let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) else { return }
+        dayItems[index].targetDate = Calendar.current.startOfDay(for: tomorrow)
+        dayItems[index].isDone = false
+        dayItems[index].completedAt = nil
+    }
+
+    func deleteDayItem(_ item: DayItem) {
+        dayItems.removeAll { $0.id == item.id }
+    }
+
     func addParkingNote(_ text: String) {
         let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty else { return }
@@ -258,7 +353,8 @@ final class AppStore: NSObject, ObservableObject {
         guard let focus = activeFocus, Date() >= focus.endsAt else { return }
         finishActiveFocus(completed: true, stopTimerIfStarted: true)
         focusJustCompleted = true
-        NSSound.beep()
+        lastRewardMessage = "Goed focusblok. Afmaken was niet nodig om dit te laten tellen."
+        playRewardSound()
         NSApp.requestUserAttention(.informationalRequest)
     }
 
@@ -315,6 +411,14 @@ final class AppStore: NSObject, ObservableObject {
         }
     }
 
+    private func playRewardSound() {
+        if let sound = NSSound(named: NSSound.Name("Glass")) {
+            sound.play()
+        } else {
+            NSSound.beep()
+        }
+    }
+
     private func normalizedTask(_ task: String) -> String {
         let value = task.trimmingCharacters(in: .whitespacesAndNewlines)
         return value.isEmpty ? "Werk" : value
@@ -331,7 +435,9 @@ final class AppStore: NSObject, ObservableObject {
             automaticAppTrackingEnabled: automaticAppTrackingEnabled,
             activeFocus: activeFocus,
             focusSessions: focusSessions,
-            parkingNotes: parkingNotes
+            parkingNotes: parkingNotes,
+            dayItems: dayItems,
+            dayCapacities: dayCapacities
         )
         PersistenceController.shared.save(state)
     }
