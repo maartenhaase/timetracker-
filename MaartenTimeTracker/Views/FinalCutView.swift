@@ -1,5 +1,311 @@
 import SwiftUI
 
+struct TodayView: View {
+    @EnvironmentObject var store: AppStore
+
+    @State private var doneText = ""
+    @State private var maybeText = ""
+    @State private var plannedMinutes: Int? = nil
+    @State private var capacityHours: Int? = nil
+
+    private let durationChoices: [(String, Int?)] = [
+        ("Geen schatting", nil),
+        ("Klein stukje", 15),
+        ("Eén blok", 30),
+        ("Ruimer blok", 60),
+        ("Groot stuk", 90)
+    ]
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                header
+                winsCard
+                justDidCard
+                calendarCard
+                gentlePlanCard
+                tomorrowCard
+            }
+            .padding(28)
+        }
+        .onAppear {
+            store.calendarService.refresh()
+            capacityHours = store.dayCapacity(for: Date()).map { $0 / 60 }
+        }
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text("Vandaag")
+                .font(.largeTitle.bold())
+            Text("Geen scorebord. Alleen zichtbaar maken wat er wél gebeurt.")
+                .foregroundStyle(.secondary)
+
+            Text(store.todayFocusMessage)
+                .font(.headline)
+                .padding(.top, 6)
+        }
+    }
+
+    private var winsCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("Dit heb je vandaag gedaan", systemImage: "checkmark.circle.fill")
+                    .font(.title3.bold())
+                Spacer()
+                if store.completedTodayItems.isEmpty && store.completedFocusToday.isEmpty {
+                    Text("de dag is nog open")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if store.completedTodayItems.isEmpty && store.completedFocusToday.isEmpty {
+                Text("Nog niets geregistreerd. Dat betekent niet dat je niets hebt gedaan — je kunt hieronder ook achteraf iets toevoegen.")
+                    .foregroundStyle(.secondary)
+            }
+
+            ForEach(Array(store.completedTodayItems.reversed())) { item in
+                HStack {
+                    Image(systemName: "checkmark.circle.fill")
+                    Text(item.title)
+                    Spacer()
+                    Button("Heropen") {
+                        store.reopenDayItem(item)
+                    }
+                    .buttonStyle(.borderless)
+                    .font(.caption)
+                }
+            }
+
+            if !store.completedFocusToday.isEmpty {
+                Divider()
+                ForEach(store.completedFocusToday.prefix(6)) { session in
+                    HStack {
+                        Image(systemName: "scope")
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(session.task.isEmpty ? "Focusblok" : session.task)
+                            Text("Goed gefocust — afronden was niet nodig om dit te laten tellen.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+        }
+        .softCard()
+    }
+
+    private var justDidCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Wat heb je net gedaan?", systemImage: "sparkles")
+                .font(.headline)
+            Text("Ook werk dat niet op een lijst stond mag meetellen.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            HStack {
+                TextField("Bijv. klant gebeld, selectie gemaakt, administratie gedaan…", text: $doneText)
+                    .onSubmit(recordDone)
+                Button("Tel mee") {
+                    recordDone()
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(doneText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+
+            if let reward = store.lastRewardMessage {
+                Label(reward, systemImage: "checkmark.seal.fill")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .softCard()
+    }
+
+    private var calendarCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("Je dag zoals hij echt is", systemImage: "calendar")
+                    .font(.headline)
+                Spacer()
+                if store.calendarService.canReadCalendar {
+                    Button("Ververs") {
+                        store.calendarService.refresh()
+                    }
+                    .buttonStyle(.borderless)
+                }
+            }
+
+            if !store.calendarService.canReadCalendar {
+                Text("Je kunt Apple Agenda alleen-lezen koppelen. Afspraken worden context, geen extra to-do's.")
+                    .foregroundStyle(.secondary)
+                Button("Geef toegang tot Agenda") {
+                    store.calendarService.requestAccess()
+                }
+            } else if store.calendarService.todayEvents.isEmpty {
+                Text("Geen afspraken gevonden voor vandaag.")
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(store.calendarService.todayEvents.prefix(10)) { event in
+                    HStack(alignment: .top) {
+                        Image(systemName: "calendar")
+                            .foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(event.title)
+                            Text(calendarTimeText(event))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                    }
+                }
+            }
+        }
+        .softCard()
+    }
+
+    private var gentlePlanCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Wat zou fijn zijn als het vandaag lukt?")
+                .font(.title3.bold())
+            Text("Dit zijn mogelijkheden, geen schuldcontracten. Alles mag morgen opnieuw gekozen worden.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Picker("Ruimte vandaag", selection: $capacityHours) {
+                Text("Geen urenlimiet invullen").tag(Int?.none)
+                ForEach(1...8, id: \.self) { hour in
+                    Text("\(hour) uur ruimte").tag(Optional(hour))
+                }
+            }
+            .onChange(of: capacityHours) { _, value in
+                store.setDayCapacity(hours: value)
+            }
+
+            HStack {
+                TextField("Iets wat je mogelijk wilt doen…", text: $maybeText)
+                    .onSubmit(addMaybe)
+
+                Picker("Omvang", selection: $plannedMinutes) {
+                    ForEach(durationChoices, id: \.0) { choice in
+                        Text(choice.0).tag(choice.1)
+                    }
+                }
+                .frame(width: 155)
+
+                Button("Zet erbij") {
+                    addMaybe()
+                }
+                .disabled(maybeText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+
+            if store.openTodayItems.isEmpty {
+                Text("Geen open mogelijkheden. Je hoeft hier niets bij te zetten om een goede dag te hebben.")
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(store.openTodayItems) { item in
+                    HStack(spacing: 10) {
+                        Button {
+                            store.completeDayItem(item)
+                        } label: {
+                            Image(systemName: "circle")
+                        }
+                        .buttonStyle(.plain)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(item.title)
+                            if let planned = item.plannedMinutes {
+                                Text(softDuration(planned))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+
+                        Spacer()
+
+                        Button("Morgen") {
+                            store.moveDayItemToTomorrow(item)
+                        }
+                        .buttonStyle(.borderless)
+
+                        Button(role: .destructive) {
+                            store.deleteDayItem(item)
+                        } label: {
+                            Image(systemName: "xmark")
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+        }
+        .softCard()
+    }
+
+    private var tomorrowCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Voor morgen", systemImage: "arrow.right.circle")
+                .font(.title3.bold())
+            Text("Alleen dingen die jij bewust hebt doorgeschoven staan hier. Geen automatische stapel.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            if store.tomorrowItems.isEmpty {
+                Text("Nog niets meegenomen. Morgen mag opnieuw beginnen.")
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(store.tomorrowItems) { item in
+                    HStack {
+                        Image(systemName: "arrow.turn.down.right")
+                        Text(item.title)
+                        Spacer()
+                    }
+                }
+            }
+
+            if store.calendarService.canReadCalendar && !store.calendarService.tomorrowEvents.isEmpty {
+                Divider()
+                Text("Morgen staat al in je agenda:")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                ForEach(store.calendarService.tomorrowEvents.prefix(6)) { event in
+                    Text("• \(event.title)")
+                        .font(.caption)
+                }
+            }
+        }
+        .softCard()
+    }
+
+    private func recordDone() {
+        store.recordDoneItem(title: doneText)
+        doneText = ""
+    }
+
+    private func addMaybe() {
+        store.addDayItem(title: maybeText, plannedMinutes: plannedMinutes)
+        maybeText = ""
+        plannedMinutes = nil
+    }
+
+    private func calendarTimeText(_ event: CalendarEventItem) -> String {
+        if event.isAllDay {
+            return "hele dag · \(event.calendarTitle)"
+        }
+        return "\(event.startDate.formatted(date: .omitted, time: .shortened)) – \(event.endDate.formatted(date: .omitted, time: .shortened)) · \(event.calendarTitle)"
+    }
+
+    private func softDuration(_ minutes: Int) -> String {
+        switch minutes {
+        case ..<20: return "klein stukje"
+        case ..<45: return "ongeveer één blok"
+        case ..<75: return "ruimer blok"
+        default: return "groter stuk"
+        }
+    }
+}
+
 struct ActivityView: View {
     @EnvironmentObject var store: AppStore
 
@@ -331,4 +637,13 @@ func compactDuration(_ duration: TimeInterval) -> String {
 func focusCountdown(_ duration: TimeInterval) -> String {
     let total = max(0, Int(duration))
     return String(format: "%02d:%02d", total / 60, total % 60)
+}
+
+
+private extension View {
+    func softCard() -> some View {
+        self
+            .padding(18)
+            .background(.quaternary.opacity(0.42), in: RoundedRectangle(cornerRadius: 16))
+    }
 }
