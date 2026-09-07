@@ -26,7 +26,7 @@ struct TimeEntry: Identifiable, Codable, Hashable {
 
 enum TimerSource: String, Codable, Hashable {
     case manual
-    case finalCut
+    case focus
 }
 
 struct RunningTimer: Codable, Hashable {
@@ -36,29 +36,98 @@ struct RunningTimer: Codable, Hashable {
     var source: TimerSource = .manual
 }
 
-struct FinalCutMapping: Identifiable, Codable, Hashable {
+struct AppActivity: Identifiable, Codable, Hashable {
     var id: UUID = UUID()
-    var detectedLabel: String
-    var projectID: UUID
-    var task: String = "Montage"
-}
-
-struct FinalCutActivity: Identifiable, Codable, Hashable {
-    var id: UUID = UUID()
-    var detectedLabel: String
+    var appName: String
+    var bundleIdentifier: String
     var start: Date
     var end: Date
-    var imported: Bool = false
 
     var duration: TimeInterval { max(0, end.timeIntervalSince(start)) }
 }
 
+enum FocusPhase: String, Codable, Hashable {
+    case focus
+    case breakTime
+}
+
+struct ActiveFocus: Codable, Hashable {
+    var phase: FocusPhase
+    var startedAt: Date
+    var endsAt: Date
+    var plannedMinutes: Int
+    var projectID: UUID?
+    var task: String
+    var startedProjectTimer: Bool = false
+}
+
+struct FocusSession: Identifiable, Codable, Hashable {
+    var id: UUID = UUID()
+    var phase: FocusPhase
+    var start: Date
+    var end: Date
+    var plannedMinutes: Int
+    var projectID: UUID?
+    var task: String
+    var completed: Bool
+}
+
+struct ParkingNote: Identifiable, Codable, Hashable {
+    var id: UUID = UUID()
+    var text: String
+    var createdAt: Date = Date()
+    var isDone: Bool = false
+}
+
 struct PersistedState: Codable {
-    var clients: [Client] = []
-    var projects: [WorkProject] = []
-    var entries: [TimeEntry] = []
-    var runningTimer: RunningTimer? = nil
-    var finalCutMappings: [FinalCutMapping] = []
-    var finalCutActivities: [FinalCutActivity] = []
-    var autoSwitchFinalCut: Bool = false
+    var clients: [Client]
+    var projects: [WorkProject]
+    var entries: [TimeEntry]
+    var runningTimer: RunningTimer?
+    var appActivities: [AppActivity]
+    var automaticAppTrackingEnabled: Bool
+    var activeFocus: ActiveFocus?
+    var focusSessions: [FocusSession]
+    var parkingNotes: [ParkingNote]
+
+    init(
+        clients: [Client] = [],
+        projects: [WorkProject] = [],
+        entries: [TimeEntry] = [],
+        runningTimer: RunningTimer? = nil,
+        appActivities: [AppActivity] = [],
+        automaticAppTrackingEnabled: Bool = true,
+        activeFocus: ActiveFocus? = nil,
+        focusSessions: [FocusSession] = [],
+        parkingNotes: [ParkingNote] = []
+    ) {
+        self.clients = clients
+        self.projects = projects
+        self.entries = entries
+        self.runningTimer = runningTimer
+        self.appActivities = appActivities
+        self.automaticAppTrackingEnabled = automaticAppTrackingEnabled
+        self.activeFocus = activeFocus
+        self.focusSessions = focusSessions
+        self.parkingNotes = parkingNotes
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case clients, projects, entries, runningTimer
+        case appActivities, automaticAppTrackingEnabled
+        case activeFocus, focusSessions, parkingNotes
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        clients = try c.decodeIfPresent([Client].self, forKey: .clients) ?? []
+        projects = try c.decodeIfPresent([WorkProject].self, forKey: .projects) ?? []
+        entries = try c.decodeIfPresent([TimeEntry].self, forKey: .entries) ?? []
+        runningTimer = try c.decodeIfPresent(RunningTimer.self, forKey: .runningTimer)
+        appActivities = try c.decodeIfPresent([AppActivity].self, forKey: .appActivities) ?? []
+        automaticAppTrackingEnabled = try c.decodeIfPresent(Bool.self, forKey: .automaticAppTrackingEnabled) ?? true
+        activeFocus = try c.decodeIfPresent(ActiveFocus.self, forKey: .activeFocus)
+        focusSessions = try c.decodeIfPresent([FocusSession].self, forKey: .focusSessions) ?? []
+        parkingNotes = try c.decodeIfPresent([ParkingNote].self, forKey: .parkingNotes) ?? []
+    }
 }
