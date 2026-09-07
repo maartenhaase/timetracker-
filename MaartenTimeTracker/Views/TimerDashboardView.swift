@@ -1,34 +1,38 @@
 import Foundation
 import SwiftUI
 
-struct WorkView: View {
+struct TodayWorkView: View {
     @EnvironmentObject var store: AppStore
 
-    @State private var clientID: UUID?
-    @State private var task = ""
+    @State private var planProjectID: UUID?
+    @State private var planTitle = ""
+    @State private var planMinutes = 30
+
+    @State private var doneProjectID: UUID?
+    @State private var doneTitle = ""
+    @State private var doneMinutes = 30
+
     @State private var isRecovery = false
+
+    private let durations = [15, 30, 45, 60, 90]
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
-                header
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Vandaag")
+                        .font(.largeTitle.bold())
+                    Text("Plan in blokken. Wat je al gedaan hebt mag net zo goed meetellen.")
+                        .foregroundStyle(.secondary)
+                }
 
                 if let block = store.activeBlock {
                     activeCard(block)
                 } else {
-                    startCard
-
-                    if let last = store.workBlocks.first {
-                        Button {
-                            clientID = last.clientID
-                            task = last.task
-                            isRecovery = false
-                            store.startBlock(clientID: clientID, task: task)
-                        } label: {
-                            Label("Nog een blok: \(last.task)", systemImage: "arrow.clockwise")
-                        }
-                        .buttonStyle(.bordered)
-                    }
+                    plannedTasksCard
+                    addPlanCard
+                    alreadyDoneCard
+                    doneTodayCard
                 }
 
                 if let message = store.lastRewardMessage {
@@ -43,78 +47,199 @@ struct WorkView: View {
         }
     }
 
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text("Waar begin je nu aan?")
-                .font(.largeTitle.bold())
-            Text("Eén korte taak. Een normaal werkblok is ongeveer een half uur.")
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    private var startCard: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Picker("Klant", selection: $clientID) {
-                Text("Intern / niet facturabel").tag(UUID?.none)
-                ForEach(store.clients) { client in
-                    Text(client.name).tag(Optional(client.id))
-                }
-            }
-
-            TextField("Wat ga je nu doen?", text: $task)
-                .font(.title3)
-                .onSubmit(start)
-
-            if store.recoveryBalanceSeconds > 30 {
-                HStack {
-                    Toggle("Dit blok telt als inhalen", isOn: $isRecovery)
-                    Spacer()
-                    Text("Er staat ongeveer \(softMinutes(store.recoveryBalanceSeconds)) in je inhaalpotje.")
+    private var plannedTasksCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("Wat wil je vandaag doen?", systemImage: "list.bullet")
+                    .font(.title3.bold())
+                Spacer()
+                if !store.openTodayTasks.isEmpty {
+                    Text("\(store.openTodayTasks.count) open")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
 
-            Button(action: start) {
-                Label("BEGIN", systemImage: "play.fill")
-                    .font(.title3.bold())
+            if store.openTodayTasks.isEmpty {
+                Text("Nog niets gepland. Voeg alleen toe wat vandaag realistisch voelt.")
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(store.openTodayTasks) { task in
+                    HStack(spacing: 12) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(task.title)
+                                .font(.headline)
+                            HStack(spacing: 6) {
+                                Text(projectLabel(task.projectID))
+                                Text("•")
+                                Text(durationText(task.plannedMinutes))
+                            }
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+
+                        Button {
+                            store.startDailyTask(task, isRecovery: false)
+                        } label: {
+                            Label("BEGIN", systemImage: "play.fill")
+                        }
+                        .buttonStyle(.borderedProminent)
+
+                        Button(role: .destructive) {
+                            store.deleteDailyTask(task)
+                        } label: {
+                            Image(systemName: "xmark")
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                    .padding(.vertical, 4)
+
+                    if task.id != store.openTodayTasks.last?.id {
+                        Divider()
+                    }
+                }
+            }
+        }
+        .softCard()
+    }
+
+    private var addPlanCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Voeg een blok toe")
+                .font(.headline)
+
+            Picker("Project", selection: $planProjectID) {
+                Text("Algemeen / intern").tag(UUID?.none)
+                ForEach(store.projects) { project in
+                    Text(projectPickerLabel(project))
+                        .tag(Optional(project.id))
+                }
+            }
+
+            TextField("Wat wil je doen?", text: $planTitle)
+
+            durationPicker(selection: $planMinutes)
+
+            Button {
+                store.addDailyTask(
+                    projectID: planProjectID,
+                    title: planTitle,
+                    plannedMinutes: planMinutes
+                )
+                planTitle = ""
+                planMinutes = 30
+            } label: {
+                Label("Zet op vandaag", systemImage: "plus")
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
+                    .padding(.vertical, 7)
             }
             .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .disabled(task.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .disabled(planTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
+        .softCard()
+    }
 
-            Text("Voor facturatie rondt elk klantblok later automatisch omhoog af op kwartieren, met minimaal 15 minuten.")
+    private var alreadyDoneCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Label("Wat heb je al gedaan?", systemImage: "sparkles")
+                .font(.headline)
+
+            Text("Ook iets dat nooit op je lijst stond mag achteraf gewoon meetellen.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+            Picker("Project", selection: $doneProjectID) {
+                Text("Algemeen / intern").tag(UUID?.none)
+                ForEach(store.projects) { project in
+                    Text(projectPickerLabel(project))
+                        .tag(Optional(project.id))
+                }
+            }
+
+            TextField("Wat heb je gedaan?", text: $doneTitle)
+
+            durationPicker(selection: $doneMinutes)
+
+            Button {
+                store.recordDoneToday(
+                    projectID: doneProjectID,
+                    title: doneTitle,
+                    plannedMinutes: doneMinutes
+                )
+                doneTitle = ""
+                doneMinutes = 30
+            } label: {
+                Label("Tel mee", systemImage: "checkmark")
+            }
+            .disabled(doneTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
-        .padding(22)
-        .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 18))
+        .softCard()
+    }
+
+    private var doneTodayCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Vandaag gedaan", systemImage: "checkmark.circle.fill")
+                .font(.title3.bold())
+
+            if store.doneTodayTasks.isEmpty {
+                Text("Nog niets geregistreerd. Dat zegt niets over hoe je dag loopt.")
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(store.doneTodayTasks.reversed()) { task in
+                    HStack {
+                        Image(systemName: "checkmark.circle.fill")
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(task.title)
+                            Text("\(projectLabel(task.projectID)) • \(durationText(task.plannedMinutes))")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                    }
+                    .padding(.vertical, 3)
+                }
+            }
+        }
+        .softCard()
     }
 
     @ViewBuilder
     private func activeCard(_ block: ActiveWorkBlock) -> some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             let focused = focusedSeconds(block, at: context.date)
-            let progress = min(1, focused / (30 * 60))
+            let target = TimeInterval((block.plannedMinutes ?? 30) * 60)
+            let progress = min(1, focused / max(1, target))
 
             VStack(alignment: .leading, spacing: 18) {
-                if let client = store.activeClient {
-                    Text(client.name)
-                        .font(.headline)
-                        .foregroundStyle(.secondary)
-                } else {
-                    Text("Niet facturabel")
-                        .font(.headline)
-                        .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 4) {
+                    if let project = store.activeProject {
+                        Text(projectPickerLabel(project))
+                            .font(.headline)
+                            .foregroundStyle(.secondary)
+                    } else if let client = store.activeClient {
+                        Text(client.name)
+                            .font(.headline)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("Algemeen / intern")
+                            .font(.headline)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Text(block.task)
+                        .font(.title.bold())
+
+                    if let planned = block.plannedMinutes {
+                        Text("Gepland blok: \(durationText(planned))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
-                Text(block.task)
-                    .font(.title.bold())
-
                 if store.isDistracted {
-                    Label("Je bent even afgeleid. Dat is nu apart geregistreerd.", systemImage: "pause.circle.fill")
+                    Label("Afleiding loopt nu apart.", systemImage: "pause.circle.fill")
                         .font(.headline)
 
                     Button {
@@ -128,19 +253,25 @@ struct WorkView: View {
                     .buttonStyle(.borderedProminent)
                     .tint(.green)
 
-                    Text("De afleiding gaat in je inhaalpotje; je gewone werktijd loopt hiervoor niet door.")
+                    Text("Deze tijd telt niet mee als focustijd en gaat naar je inhaalpotje.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
                     VStack(alignment: .leading, spacing: 8) {
                         ProgressView(value: progress)
-                            .progressViewStyle(.linear)
 
-                        Text(blockStatus(focused))
+                        Text(blockStatus(focused, target: target))
                             .font(.headline)
-                        Text("30 minuten is een richtpunt, geen verplichting.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+
+                        if focused >= target {
+                            Text("Je geplande blok staat. Alleen doorgaan als dat nu nog logisch is.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Text("De balk is richting, geen verplichting.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
 
                     HStack(spacing: 12) {
@@ -167,11 +298,17 @@ struct WorkView: View {
                         .tint(.red)
                     }
 
-                    Button("Stop dit blok zonder 'klaar'") {
+                    Button("Stop blok, taak blijft open") {
                         store.finishBlock(done: false)
                     }
                     .buttonStyle(.borderless)
                     .foregroundStyle(.secondary)
+                }
+
+                if store.recoveryBalanceSeconds > 30 && !block.isRecovery {
+                    Toggle("Dit blok ook als inhalen tellen", isOn: $isRecovery)
+                        .disabled(true)
+                        .hidden()
                 }
 
                 if block.isRecovery {
@@ -185,10 +322,34 @@ struct WorkView: View {
         }
     }
 
-    private func start() {
-        store.startBlock(clientID: clientID, task: task, isRecovery: isRecovery)
-        task = ""
-        isRecovery = false
+    private func durationPicker(selection: Binding<Int>) -> some View {
+        HStack(spacing: 8) {
+            ForEach(durations, id: \.self) { minutes in
+                Button(durationText(minutes)) {
+                    selection.wrappedValue = minutes
+                }
+                .buttonStyle(.bordered)
+                .overlay {
+                    if selection.wrappedValue == minutes {
+                        RoundedRectangle(cornerRadius: 7)
+                            .stroke(.primary, lineWidth: 2)
+                    }
+                }
+            }
+        }
+    }
+
+    private func projectPickerLabel(_ project: WorkProject) -> String {
+        let client = store.clients.first(where: { $0.id == project.clientID })?.name ?? "Onbekend"
+        return "\(client) — \(project.name)"
+    }
+
+    private func projectLabel(_ projectID: UUID?) -> String {
+        guard let projectID,
+              let project = store.projects.first(where: { $0.id == projectID }) else {
+            return "Algemeen"
+        }
+        return projectPickerLabel(project)
     }
 
     private func focusedSeconds(_ block: ActiveWorkBlock, at date: Date) -> TimeInterval {
@@ -199,20 +360,35 @@ struct WorkView: View {
         return max(0, date.timeIntervalSince(block.startedAt) - distraction)
     }
 
-    private func blockStatus(_ seconds: TimeInterval) -> String {
-        if seconds < 8 * 60 {
-            return "Je bent begonnen. Dat is genoeg voor nu."
-        } else if seconds < 20 * 60 {
-            return "Je zit in je blok."
-        } else if seconds < 30 * 60 {
-            return "Lekker bezig — houd dit ene ding vast."
+    private func blockStatus(_ seconds: TimeInterval, target: TimeInterval) -> String {
+        let fraction = seconds / max(1, target)
+        if fraction < 0.25 {
+            return "Je bent begonnen. Houd alleen dit ene ding vast."
+        } else if fraction < 0.65 {
+            return "Je zit goed in je blok."
+        } else if fraction < 1 {
+            return "Je bent een flink stuk op weg."
         } else {
-            return "Volwaardig werkblok neergezet."
+            return "Je geplande blok is neergezet."
         }
     }
 
-    private func softMinutes(_ seconds: TimeInterval) -> String {
-        let minutes = max(1, Int(ceil(seconds / 60)))
-        return "\(minutes) min"
+    private func durationText(_ minutes: Int) -> String {
+        switch minutes {
+        case 15: return "15 min"
+        case 30: return "30 min"
+        case 45: return "45 min"
+        case 60: return "1 uur"
+        case 90: return "1,5 uur"
+        default: return "\(minutes) min"
+        }
+    }
+}
+
+private extension View {
+    func softCard() -> some View {
+        self
+            .padding(18)
+            .background(.quaternary.opacity(0.42), in: RoundedRectangle(cornerRadius: 16))
     }
 }
