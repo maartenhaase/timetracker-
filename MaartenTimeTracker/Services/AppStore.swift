@@ -5,6 +5,8 @@ import AppKit
 @MainActor
 final class AppStore: ObservableObject {
     @Published var clients: [Client] = []
+    @Published var projects: [WorkProject] = []
+    @Published var dailyTasks: [DailyTask] = []
     @Published var workBlocks: [WorkBlock] = []
     @Published var activeBlock: ActiveWorkBlock?
     @Published var activeDistraction: ActiveDistraction?
@@ -14,20 +16,37 @@ final class AppStore: ObservableObject {
     init() {
         let state = PersistenceController.shared.load()
         clients = state.clients
+        projects = state.projects
+        dailyTasks = state.dailyTasks
         workBlocks = state.workBlocks
         activeBlock = state.activeBlock
         activeDistraction = state.activeDistraction
         distractionPeriods = state.distractionPeriods
     }
 
-    var isDistracted: Bool {
-        activeDistraction != nil
-    }
+    var isDistracted: Bool { activeDistraction != nil }
 
     var activeClient: Client? {
         guard let id = activeBlock?.clientID else { return nil }
         return clients.first(where: { $0.id == id })
     }
+
+    var activeProject: WorkProject? {
+        guard let id = activeBlock?.projectID else { return nil }
+        return projects.first(where: { $0.id == id })
+    }
+
+    var todayTasks: [DailyTask] {
+        dailyTasks
+            .filter { Calendar.current.isDateInToday($0.date) }
+            .sorted {
+                if $0.isDone != $1.isDone { return !$0.isDone }
+                return $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
+            }
+    }
+
+    var openTodayTasks: [DailyTask] { todayTasks.filter { !$0.isDone } }
+    var doneTodayTasks: [DailyTask] { todayTasks.filter { $0.isDone } }
 
     var todayBlocks: [WorkBlock] {
         workBlocks.filter { Calendar.current.isDateInToday($0.startedAt) }
@@ -42,9 +61,7 @@ final class AppStore: ObservableObject {
     }
 
     var recoverySecondsToday: TimeInterval {
-        todayBlocks
-            .filter { $0.isRecovery }
-            .reduce(0) { $0 + $1.focusedSeconds }
+        todayBlocks.filter { $0.isRecovery }.reduce(0) { $0 + $1.focusedSeconds }
     }
 
     var recoveryBalanceSeconds: TimeInterval {
@@ -62,11 +79,7 @@ final class AppStore: ObservableObject {
                 $0.clientID == client.id && !$0.invoiced && $0.billableMinutes > 0
             }
             guard !blocks.isEmpty else { return nil }
-            return (
-                client,
-                blocks,
-                blocks.reduce(0) { $0 + $1.billableMinutes }
-            )
+            return (client, blocks, blocks.reduce(0) { $0 + $1.billableMinutes })
         }
         .sorted { $0.client.name.localizedCaseInsensitiveCompare($1.client.name) == .orderedAscending }
     }
@@ -80,18 +93,112 @@ final class AppStore: ObservableObject {
 
     func deleteClient(_ client: Client) {
         guard activeBlock?.clientID != client.id else { return }
+        let projectIDs = Set(projects.filter { $0.clientID == client.id }.map(\.id))
+        guard !dailyTasks.contains(where: { task in
+            if let id = task.projectID { return projectIDs.contains(id) && !task.isDone }
+            return false
+        }) else { return }
+
         clients.removeAll { $0.id == client.id }
+        projects.removeAll { $0.clientID == client.id }
         save()
     }
 
-    func startBlock(clientID: UUID?, task: String, isRecovery: Bool = false) {
+    func addProject(clientID: UUID, name: String) {
+        let cleaned = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return }
+        projects.append(WorkProject(clientID: clientID, name: cleaned))
+        save()
+    }
+
+    func deleteProject(_ project: WorkProject) {
+        guard activeBlock?.projectID != project.id else { return }
+        guard !dailyTasks.contains(where: { $0.projectID == project.id && !$0.isDone }) else { return }
+        projects.removeAll { $0.id == project.id }
+        save()
+    }
+
+    func projectName(for id: UUID?) -> String {
+        guard let id else { return "Algemeen" }
+        return projects.first(where: { $0.id == id })?.name ?? "Onbekend project"
+    }
+
+    func clientForProject(_ projectID: UUID?) -> Client? {
+        guard let projectID,
+              let project = projects.first(where: { $0.id == projectID }) else { return nil }
+        return clients.first(where: { $0.id == project.clientID })
+    }
+
+    func addDailyTask(projectID: UUID?, title: String, plannedMinutes: Int) {
+        let cleaned = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return }
+
+        dailyTasks.append(
+            DailyTask(
+                projectID: projectID,
+                title: cleaned,
+                date: Calendar.current.startOfDay(for: Date()),
+                plannedMinutes: plannedMinutes
+            )
+        )
+        save()
+    }
+
+    func recordDoneToday(projectID: UUID?, title: String, plannedMinutes: Int) {
+        let cleaned = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return }
+
+        dailyTasks.append(
+            DailyTask(
+                projectID: projectID,
+                title: cleaned,
+                date: Calendar.current.startOfDay(for: Date()),
+                plannedMinutes: plannedMinutes,
+                isDone: true,
+                completedAt: Date()
+            )
+        )
+        lastRewardMessage = "Mooi. Dit heb je vandaag al gedaan."
+        playRewardSound()
+        save()
+    }
+
+    func deleteDailyTask(_ task: DailyTask) {
+        guard activeBlock?.dailyTaskID != task.id else { return }
+        dailyTasks.removeAll { $0.id == task.id }
+        save()
+    }
+
+    func startDailyTask(_ task: DailyTask, isRecovery: Bool = false) {
+        let project = task.projectID.flatMap { id in projects.first(where: { $0.id == id }) }
+        startBlock(
+            clientID: project?.clientID,
+            projectID: task.projectID,
+            dailyTaskID: task.id,
+            task: task.title,
+            plannedMinutes: task.plannedMinutes,
+            isRecovery: isRecovery
+        )
+    }
+
+    func startBlock(
+        clientID: UUID?,
+        projectID: UUID? = nil,
+        dailyTaskID: UUID? = nil,
+        task: String,
+        plannedMinutes: Int? = nil,
+        isRecovery: Bool = false
+    ) {
         guard activeBlock == nil else { return }
         let cleaned = task.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty else { return }
 
         activeBlock = ActiveWorkBlock(
             clientID: clientID,
+            projectID: projectID,
+            dailyTaskID: dailyTaskID,
             task: cleaned,
+            plannedMinutes: plannedMinutes,
             startedAt: Date(),
             distractionSeconds: 0,
             isRecovery: isRecovery
@@ -147,7 +254,9 @@ final class AppStore: ObservableObject {
             WorkBlock(
                 id: block.id,
                 clientID: block.clientID,
+                projectID: block.projectID,
                 task: block.task,
+                plannedMinutes: block.plannedMinutes,
                 startedAt: block.startedAt,
                 endedAt: now,
                 distractionSeconds: block.distractionSeconds,
@@ -159,6 +268,12 @@ final class AppStore: ObservableObject {
             ),
             at: 0
         )
+
+        if done, let dailyTaskID = block.dailyTaskID,
+           let index = dailyTasks.firstIndex(where: { $0.id == dailyTaskID }) {
+            dailyTasks[index].isDone = true
+            dailyTasks[index].completedAt = now
+        }
 
         activeBlock = nil
         activeDistraction = nil
@@ -175,7 +290,8 @@ final class AppStore: ObservableObject {
     }
 
     func markClientInvoiced(_ client: Client) {
-        for index in workBlocks.indices where workBlocks[index].clientID == client.id && !workBlocks[index].invoiced {
+        for index in workBlocks.indices
+        where workBlocks[index].clientID == client.id && !workBlocks[index].invoiced {
             workBlocks[index].invoiced = true
         }
         lastRewardMessage = "Gefactureerd. Uit je hoofd."
@@ -211,6 +327,8 @@ final class AppStore: ObservableObject {
         PersistenceController.shared.save(
             PersistedState(
                 clients: clients,
+                projects: projects,
+                dailyTasks: dailyTasks,
                 workBlocks: workBlocks,
                 activeBlock: activeBlock,
                 activeDistraction: activeDistraction,
