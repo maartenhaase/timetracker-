@@ -3,7 +3,7 @@ import AppKit
 import ApplicationServices
 
 @MainActor
-final class FinalCutMonitor: ObservableObject {
+final class FinalCutMonitor: NSObject, ObservableObject {
     @Published var isFinalCutFrontmost = false
     @Published var detectedLabel: String = ""
     @Published var candidateLabels: [String] = []
@@ -21,12 +21,14 @@ final class FinalCutMonitor: ObservableObject {
     func start() {
         guard timer == nil else { return }
         poll()
-        timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                self?.poll()
-            }
-        }
+        timer = Timer.scheduledTimer(timeInterval: 2.0,
+                                     target: self,
+                                     selector: #selector(timerFired),
+                                     userInfo: nil,
+                                     repeats: true)
     }
+
+    @objc private func timerFired() { poll() }
 
     func stop() {
         timer?.invalidate()
