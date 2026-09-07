@@ -5,154 +5,84 @@ struct Client: Identifiable, Codable, Hashable {
     var name: String
 }
 
-struct WorkProject: Identifiable, Codable, Hashable {
+enum WorkBlockResult: String, Codable, Hashable {
+    case done
+    case stopped
+}
+
+struct ActiveWorkBlock: Codable, Hashable {
     var id: UUID = UUID()
-    var clientID: UUID
-    var name: String
-    var defaultTask: String = "Montage"
-    var hourlyRate: Double = 0
-    var isArchived: Bool = false
-}
-
-struct TimeEntry: Identifiable, Codable, Hashable {
-    var id: UUID = UUID()
-    var projectID: UUID
-    var task: String
-    var start: Date
-    var end: Date
-
-    var duration: TimeInterval { max(0, end.timeIntervalSince(start)) }
-}
-
-enum TimerSource: String, Codable, Hashable {
-    case manual
-    case focus
-    case finalCut // legacy value from the first beta; no longer used
-}
-
-struct RunningTimer: Codable, Hashable {
-    var projectID: UUID
+    var clientID: UUID?
     var task: String
     var startedAt: Date
-    var source: TimerSource = .manual
+    var distractionSeconds: TimeInterval = 0
+    var isRecovery: Bool = false
 }
 
-struct AppActivity: Identifiable, Codable, Hashable {
+struct WorkBlock: Identifiable, Codable, Hashable {
     var id: UUID = UUID()
-    var appName: String
-    var bundleIdentifier: String
-    var start: Date
-    var end: Date
-
-    var duration: TimeInterval { max(0, end.timeIntervalSince(start)) }
-}
-
-enum FocusPhase: String, Codable, Hashable {
-    case focus
-    case breakTime
-}
-
-struct ActiveFocus: Codable, Hashable {
-    var phase: FocusPhase
+    var clientID: UUID?
+    var task: String
     var startedAt: Date
-    var endsAt: Date
-    var plannedMinutes: Int
-    var projectID: UUID?
+    var endedAt: Date
+    var distractionSeconds: TimeInterval
+    var focusedSeconds: TimeInterval
+    var billableMinutes: Int
+    var result: WorkBlockResult
+    var invoiced: Bool = false
+    var isRecovery: Bool = false
+}
+
+struct ActiveDistraction: Codable, Hashable {
+    var startedAt: Date
+}
+
+struct DistractionPeriod: Identifiable, Codable, Hashable {
+    var id: UUID = UUID()
+    var startedAt: Date
+    var endedAt: Date
     var task: String
-    var startedProjectTimer: Bool = false
-}
 
-struct FocusSession: Identifiable, Codable, Hashable {
-    var id: UUID = UUID()
-    var phase: FocusPhase
-    var start: Date
-    var end: Date
-    var plannedMinutes: Int
-    var projectID: UUID?
-    var task: String
-    var completed: Bool
-}
-
-struct ParkingNote: Identifiable, Codable, Hashable {
-    var id: UUID = UUID()
-    var text: String
-    var createdAt: Date = Date()
-    var isDone: Bool = false
-}
-
-struct DayItem: Identifiable, Codable, Hashable {
-    var id: UUID = UUID()
-    var title: String
-    var targetDate: Date
-    var plannedMinutes: Int? = nil
-    var isDone: Bool = false
-    var completedAt: Date? = nil
-    var createdAt: Date = Date()
-}
-
-struct DayCapacity: Codable, Hashable {
-    var date: Date
-    var availableWorkMinutes: Int?
+    var duration: TimeInterval {
+        max(0, endedAt.timeIntervalSince(startedAt))
+    }
 }
 
 struct PersistedState: Codable {
     var clients: [Client]
-    var projects: [WorkProject]
-    var entries: [TimeEntry]
-    var runningTimer: RunningTimer?
-    var appActivities: [AppActivity]
-    var automaticAppTrackingEnabled: Bool
-    var activeFocus: ActiveFocus?
-    var focusSessions: [FocusSession]
-    var parkingNotes: [ParkingNote]
-    var dayItems: [DayItem]
-    var dayCapacities: [DayCapacity]
+    var workBlocks: [WorkBlock]
+    var activeBlock: ActiveWorkBlock?
+    var activeDistraction: ActiveDistraction?
+    var distractionPeriods: [DistractionPeriod]
 
     init(
         clients: [Client] = [],
-        projects: [WorkProject] = [],
-        entries: [TimeEntry] = [],
-        runningTimer: RunningTimer? = nil,
-        appActivities: [AppActivity] = [],
-        automaticAppTrackingEnabled: Bool = true,
-        activeFocus: ActiveFocus? = nil,
-        focusSessions: [FocusSession] = [],
-        parkingNotes: [ParkingNote] = [],
-        dayItems: [DayItem] = [],
-        dayCapacities: [DayCapacity] = []
+        workBlocks: [WorkBlock] = [],
+        activeBlock: ActiveWorkBlock? = nil,
+        activeDistraction: ActiveDistraction? = nil,
+        distractionPeriods: [DistractionPeriod] = []
     ) {
         self.clients = clients
-        self.projects = projects
-        self.entries = entries
-        self.runningTimer = runningTimer
-        self.appActivities = appActivities
-        self.automaticAppTrackingEnabled = automaticAppTrackingEnabled
-        self.activeFocus = activeFocus
-        self.focusSessions = focusSessions
-        self.parkingNotes = parkingNotes
-        self.dayItems = dayItems
-        self.dayCapacities = dayCapacities
+        self.workBlocks = workBlocks
+        self.activeBlock = activeBlock
+        self.activeDistraction = activeDistraction
+        self.distractionPeriods = distractionPeriods
     }
 
     enum CodingKeys: String, CodingKey {
-        case clients, projects, entries, runningTimer
-        case appActivities, automaticAppTrackingEnabled
-        case activeFocus, focusSessions, parkingNotes
-        case dayItems, dayCapacities
+        case clients
+        case workBlocks
+        case activeBlock
+        case activeDistraction
+        case distractionPeriods
     }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         clients = try c.decodeIfPresent([Client].self, forKey: .clients) ?? []
-        projects = try c.decodeIfPresent([WorkProject].self, forKey: .projects) ?? []
-        entries = try c.decodeIfPresent([TimeEntry].self, forKey: .entries) ?? []
-        runningTimer = try c.decodeIfPresent(RunningTimer.self, forKey: .runningTimer)
-        appActivities = try c.decodeIfPresent([AppActivity].self, forKey: .appActivities) ?? []
-        automaticAppTrackingEnabled = try c.decodeIfPresent(Bool.self, forKey: .automaticAppTrackingEnabled) ?? true
-        activeFocus = try c.decodeIfPresent(ActiveFocus.self, forKey: .activeFocus)
-        focusSessions = try c.decodeIfPresent([FocusSession].self, forKey: .focusSessions) ?? []
-        parkingNotes = try c.decodeIfPresent([ParkingNote].self, forKey: .parkingNotes) ?? []
-        dayItems = try c.decodeIfPresent([DayItem].self, forKey: .dayItems) ?? []
-        dayCapacities = try c.decodeIfPresent([DayCapacity].self, forKey: .dayCapacities) ?? []
+        workBlocks = try c.decodeIfPresent([WorkBlock].self, forKey: .workBlocks) ?? []
+        activeBlock = try c.decodeIfPresent(ActiveWorkBlock.self, forKey: .activeBlock)
+        activeDistraction = try c.decodeIfPresent(ActiveDistraction.self, forKey: .activeDistraction)
+        distractionPeriods = try c.decodeIfPresent([DistractionPeriod].self, forKey: .distractionPeriods) ?? []
     }
 }
