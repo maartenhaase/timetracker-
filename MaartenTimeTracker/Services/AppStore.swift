@@ -308,6 +308,21 @@ final class AppStore: NSObject, ObservableObject {
         )
     }
 
+    func recordDoneItem(title: String, targetDate: Date = Date()) {
+        let cleaned = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return }
+        dayItems.append(
+            DayItem(
+                title: cleaned,
+                targetDate: Calendar.current.startOfDay(for: targetDate),
+                isDone: true,
+                completedAt: Date()
+            )
+        )
+        lastRewardMessage = "Ja. Dit telt."
+        playRewardSound()
+    }
+
     func completeDayItem(_ item: DayItem) {
         guard let index = dayItems.firstIndex(where: { $0.id == item.id }) else { return }
         dayItems[index].isDone = true
