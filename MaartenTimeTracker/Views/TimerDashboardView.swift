@@ -200,14 +200,13 @@ struct WorkView: View {
     }
 
     private func blockStatus(_ seconds: TimeInterval) -> String {
-        switch seconds {
-        case ..<8 * 60:
+        if seconds < 8 * 60 {
             return "Je bent begonnen. Dat is genoeg voor nu."
-        case ..<20 * 60:
+        } else if seconds < 20 * 60 {
             return "Je zit in je blok."
-        case ..<30 * 60:
+        } else if seconds < 30 * 60 {
             return "Lekker bezig — houd dit ene ding vast."
-        default:
+        } else {
             return "Volwaardig werkblok neergezet."
         }
     }
