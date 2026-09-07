@@ -339,6 +339,47 @@ struct BillingProjectSummary: Identifiable, Hashable {
     var totalBillableMinutes: Int
 }
 
+
+struct MedicationEntry: Identifiable, Codable, Hashable {
+    var id: UUID = UUID()
+    var date: Date
+    var name: String
+    var dose: Double
+    var unit: String
+    var note: String = ""
+}
+
+struct CoffeeEntry: Identifiable, Codable, Hashable {
+    var id: UUID = UUID()
+    var date: Date
+}
+
+struct WellbeingEntry: Identifiable, Codable, Hashable {
+    var id: UUID = UUID()
+    var date: Date
+    var calm: Int
+    var focus: Int
+    var energy: Int
+    var mood: Int
+    var note: String = ""
+}
+
+struct SleepEntry: Identifiable, Codable, Hashable {
+    var id: UUID = UUID()
+    var date: Date
+    var sleepHours: Double
+    var fallAsleepMinutes: Int
+    var rested: Int
+    var note: String = ""
+}
+
+struct MedicationPreset: Identifiable, Hashable {
+    var id: String { "\(name)|\(dose)|\(unit)" }
+    var name: String
+    var dose: Double
+    var unit: String
+}
+
 struct PersistedState: Codable {
     var clients: [Client]
     var projects: [WorkProject]
@@ -350,6 +391,10 @@ struct PersistedState: Codable {
     var distractionPeriods: [DistractionPeriod]
     var balanceDays: [BalanceDay]
     var closedWorkdays: [ClosedWorkday]
+    var medicationEntries: [MedicationEntry]
+    var coffeeEntries: [CoffeeEntry]
+    var wellbeingEntries: [WellbeingEntry]
+    var sleepEntries: [SleepEntry]
 
     init(
         clients: [Client] = [],
@@ -361,7 +406,11 @@ struct PersistedState: Codable {
         activeDistraction: ActiveDistraction? = nil,
         distractionPeriods: [DistractionPeriod] = [],
         balanceDays: [BalanceDay] = [],
-        closedWorkdays: [ClosedWorkday] = []
+        closedWorkdays: [ClosedWorkday] = [],
+        medicationEntries: [MedicationEntry] = [],
+        coffeeEntries: [CoffeeEntry] = [],
+        wellbeingEntries: [WellbeingEntry] = [],
+        sleepEntries: [SleepEntry] = []
     ) {
         self.clients = clients
         self.projects = projects
@@ -373,12 +422,17 @@ struct PersistedState: Codable {
         self.distractionPeriods = distractionPeriods
         self.balanceDays = balanceDays
         self.closedWorkdays = closedWorkdays
+        self.medicationEntries = medicationEntries
+        self.coffeeEntries = coffeeEntries
+        self.wellbeingEntries = wellbeingEntries
+        self.sleepEntries = sleepEntries
     }
 
     enum CodingKeys: String, CodingKey {
         case clients, projects, dailyTasks, workBlocks, activeBlock
         case parkedItems, activeDistraction, distractionPeriods
         case balanceDays, closedWorkdays
+        case medicationEntries, coffeeEntries, wellbeingEntries, sleepEntries
     }
 
     init(from decoder: Decoder) throws {
@@ -393,5 +447,9 @@ struct PersistedState: Codable {
         distractionPeriods = try c.decodeIfPresent([DistractionPeriod].self, forKey: .distractionPeriods) ?? []
         balanceDays = try c.decodeIfPresent([BalanceDay].self, forKey: .balanceDays) ?? []
         closedWorkdays = try c.decodeIfPresent([ClosedWorkday].self, forKey: .closedWorkdays) ?? []
+        medicationEntries = try c.decodeIfPresent([MedicationEntry].self, forKey: .medicationEntries) ?? []
+        coffeeEntries = try c.decodeIfPresent([CoffeeEntry].self, forKey: .coffeeEntries) ?? []
+        wellbeingEntries = try c.decodeIfPresent([WellbeingEntry].self, forKey: .wellbeingEntries) ?? []
+        sleepEntries = try c.decodeIfPresent([SleepEntry].self, forKey: .sleepEntries) ?? []
     }
 }

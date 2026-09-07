@@ -71,6 +71,22 @@ struct MenuBarView: View {
                      : "Open Maarten Flow en kies één blok.")
                     .font(.caption)
             }
+            Divider()
+
+            HStack {
+                Button {
+                    store.logCoffee()
+                } label: {
+                    Label("☕ +1 koffie", systemImage: "cup.and.saucer")
+                }
+                .buttonStyle(.bordered)
+
+                Spacer()
+
+                Text("vandaag (store.coffeeTodayCount)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .padding(14)
         .frame(width: 320)

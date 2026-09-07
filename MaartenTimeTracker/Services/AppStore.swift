@@ -14,6 +14,10 @@ final class AppStore: ObservableObject {
     @Published var distractionPeriods: [DistractionPeriod] = []
     @Published var balanceDays: [BalanceDay] = []
     @Published var closedWorkdays: [ClosedWorkday] = []
+    @Published var medicationEntries: [MedicationEntry] = []
+    @Published var coffeeEntries: [CoffeeEntry] = []
+    @Published var wellbeingEntries: [WellbeingEntry] = []
+    @Published var sleepEntries: [SleepEntry] = []
     @Published var lastRewardMessage: String?
 
     init() {
@@ -28,6 +32,10 @@ final class AppStore: ObservableObject {
         distractionPeriods = state.distractionPeriods
         balanceDays = state.balanceDays
         closedWorkdays = state.closedWorkdays
+        medicationEntries = state.medicationEntries
+        coffeeEntries = state.coffeeEntries
+        wellbeingEntries = state.wellbeingEntries
+        sleepEntries = state.sleepEntries
 
         migrateProjects()
         safelyParkOvernightBlock()
@@ -175,6 +183,192 @@ final class AppStore: ObservableObject {
                 ($0.completedAt ?? $0.date) > ($1.completedAt ?? $1.date)
             }) }
             .sorted { $0.date > $1.date }
+    }
+
+
+    var coffeeTodayCount: Int {
+        coffeeEntries.filter { Calendar.current.isDateInToday($0.date) }.count
+    }
+
+    var recentMedicationPresets: [MedicationPreset] {
+        var seen = Set<String>()
+        var result: [MedicationPreset] = []
+
+        for entry in medicationEntries.sorted(by: { $0.date > $1.date }) {
+            let key = "\(entry.name.lowercased())|\(entry.dose)|\(entry.unit.lowercased())"
+            if !seen.contains(key) {
+                seen.insert(key)
+                result.append(MedicationPreset(name: entry.name, dose: entry.dose, unit: entry.unit))
+            }
+            if result.count >= 6 { break }
+        }
+        return result
+    }
+
+    func logCoffee() {
+        coffeeEntries.append(CoffeeEntry(date: Date()))
+        lastRewardMessage = "Koffie gelogd."
+        save()
+    }
+
+    func undoLastCoffee() {
+        guard let index = coffeeEntries.indices
+            .filter({ Calendar.current.isDateInToday(coffeeEntries[$0].date) })
+            .max(by: { coffeeEntries[$0].date < coffeeEntries[$1].date }) else { return }
+        coffeeEntries.remove(at: index)
+        lastRewardMessage = "Laatste koffie verwijderd."
+        save()
+    }
+
+    func logMedication(name: String, dose: Double, unit: String, note: String = "") {
+        let cleanedName = clean(name)
+        let cleanedUnit = clean(unit)
+        guard !cleanedName.isEmpty, dose > 0, !cleanedUnit.isEmpty else { return }
+
+        medicationEntries.append(
+            MedicationEntry(
+                date: Date(),
+                name: cleanedName,
+                dose: dose,
+                unit: cleanedUnit,
+                note: clean(note)
+            )
+        )
+        lastRewardMessage = "Medicatie gelogd."
+        save()
+    }
+
+    func deleteMedication(_ entry: MedicationEntry) {
+        medicationEntries.removeAll { $0.id == entry.id }
+        save()
+    }
+
+    func logWellbeing(calm: Int, focus: Int, energy: Int, mood: Int, note: String) {
+        wellbeingEntries.append(
+            WellbeingEntry(
+                date: Date(),
+                calm: min(5, max(1, calm)),
+                focus: min(5, max(1, focus)),
+                energy: min(5, max(1, energy)),
+                mood: min(5, max(1, mood)),
+                note: clean(note)
+            )
+        )
+        lastRewardMessage = "Check-in opgeslagen."
+        save()
+    }
+
+    func deleteWellbeing(_ entry: WellbeingEntry) {
+        wellbeingEntries.removeAll { $0.id == entry.id }
+        save()
+    }
+
+    func logSleep(sleepHours: Double, fallAsleepMinutes: Int, rested: Int, note: String) {
+        sleepEntries.append(
+            SleepEntry(
+                date: Date(),
+                sleepHours: max(0, sleepHours),
+                fallAsleepMinutes: max(0, fallAsleepMinutes),
+                rested: min(5, max(1, rested)),
+                note: clean(note)
+            )
+        )
+        lastRewardMessage = "Nachtrust opgeslagen."
+        save()
+    }
+
+    func deleteSleep(_ entry: SleepEntry) {
+        sleepEntries.removeAll { $0.id == entry.id }
+        save()
+    }
+
+    func healthReport(days: Int) -> String {
+        let safeDays = max(1, days)
+        let now = Date()
+        let start = Calendar.current.date(
+            byAdding: .day,
+            value: -(safeDays - 1),
+            to: Calendar.current.startOfDay(for: now)
+        ) ?? now
+
+        let meds = medicationEntries.filter { $0.date >= start && $0.date <= now }.sorted { $0.date < $1.date }
+        let coffees = coffeeEntries.filter { $0.date >= start && $0.date <= now }.sorted { $0.date < $1.date }
+        let checks = wellbeingEntries.filter { $0.date >= start && $0.date <= now }.sorted { $0.date < $1.date }
+        let sleeps = sleepEntries.filter { $0.date >= start && $0.date <= now }.sorted { $0.date < $1.date }
+
+        func average(_ values: [Double]) -> String {
+            guard !values.isEmpty else { return "—" }
+            return String(format: "%.1f", values.reduce(0, +) / Double(values.count))
+        }
+
+        var lines: [String] = []
+        lines.append("MAARTEN FLOW — GEZONDHEIDSLOG")
+        lines.append("Periode: \(start.formatted(date: .abbreviated, time: .omitted)) t/m \(now.formatted(date: .abbreviated, time: .omitted))")
+        lines.append("")
+        lines.append("SAMENVATTING")
+        lines.append("Koffie: \(coffees.count) koppen totaal")
+        lines.append("Slaap: gemiddeld \(average(sleeps.map { $0.sleepHours })) uur")
+        lines.append("Inslapen: gemiddeld \(average(sleeps.map { Double($0.fallAsleepMinutes) })) min")
+        lines.append("Uitgerust: gemiddeld \(average(sleeps.map { Double($0.rested) }))/5")
+        lines.append("Rust in hoofd: gemiddeld \(average(checks.map { Double($0.calm) }))/5")
+        lines.append("Focus: gemiddeld \(average(checks.map { Double($0.focus) }))/5")
+        lines.append("Energie: gemiddeld \(average(checks.map { Double($0.energy) }))/5")
+        lines.append("Stemming: gemiddeld \(average(checks.map { Double($0.mood) }))/5")
+        lines.append("")
+        lines.append("DAGLOG")
+
+        let dayStarts = (0..<safeDays).compactMap {
+            Calendar.current.date(byAdding: .day, value: $0, to: start)
+        }
+
+        for day in dayStarts {
+            let dayMeds = meds.filter { Calendar.current.isDate($0.date, inSameDayAs: day) }
+            let dayCoffee = coffees.filter { Calendar.current.isDate($0.date, inSameDayAs: day) }
+            let dayChecks = checks.filter { Calendar.current.isDate($0.date, inSameDayAs: day) }
+            let daySleeps = sleeps.filter { Calendar.current.isDate($0.date, inSameDayAs: day) }
+
+            guard !dayMeds.isEmpty || !dayCoffee.isEmpty || !dayChecks.isEmpty || !daySleeps.isEmpty else { continue }
+
+            lines.append("")
+            lines.append(day.formatted(date: .complete, time: .omitted))
+
+            for sleep in daySleeps {
+                lines.append("  Slaap: \(String(format: "%.1f", sleep.sleepHours)) uur · inslapen \(sleep.fallAsleepMinutes) min · uitgerust \(sleep.rested)/5\(sleep.note.isEmpty ? "" : " · \(sleep.note)")")
+            }
+
+            for med in dayMeds {
+                lines.append("  Medicatie \(med.date.formatted(date: .omitted, time: .shortened)): \(med.name) \(formatDose(med.dose)) \(med.unit)\(med.note.isEmpty ? "" : " · \(med.note)")")
+            }
+
+            if !dayCoffee.isEmpty {
+                let times = dayCoffee
+                    .map { $0.date.formatted(date: .omitted, time: .shortened) }
+                    .joined(separator: ", ")
+                lines.append("  Koffie: \(dayCoffee.count) · \(times)")
+            }
+
+            for check in dayChecks {
+                lines.append("  Check-in \(check.date.formatted(date: .omitted, time: .shortened)): rust \(check.calm)/5 · focus \(check.focus)/5 · energie \(check.energy)/5 · stemming \(check.mood)/5\(check.note.isEmpty ? "" : " · \(check.note)")")
+            }
+        }
+
+        lines.append("")
+        lines.append("Dit rapport beschrijft alleen wat is gelogd en geeft geen doserings- of behandeladvies.")
+        return lines.joined(separator: "\n")
+    }
+
+    func copyHealthReport(days: Int) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(healthReport(days: days), forType: .string)
+        lastRewardMessage = "Rapport gekopieerd."
+    }
+
+    private func formatDose(_ dose: Double) -> String {
+        if dose.rounded() == dose {
+            return String(Int(dose))
+        }
+        return String(format: "%.2f", dose)
+            .replacingOccurrences(of: "0$", with: "")
     }
 
     func addClient(_ name: String) {
@@ -677,7 +871,11 @@ final class AppStore: ObservableObject {
                 activeDistraction: activeDistraction,
                 distractionPeriods: distractionPeriods,
                 balanceDays: balanceDays,
-                closedWorkdays: closedWorkdays
+                closedWorkdays: closedWorkdays,
+                medicationEntries: medicationEntries,
+                coffeeEntries: coffeeEntries,
+                wellbeingEntries: wellbeingEntries,
+                sleepEntries: sleepEntries
             )
         )
     }

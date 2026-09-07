@@ -8,6 +8,7 @@ struct ContentView: View {
         case clients = "Klanten & projecten"
         case billing = "Factureren"
         case done = "Gedaan"
+        case health = "Gezondheid"
 
         var id: String { rawValue }
 
@@ -17,6 +18,7 @@ struct ContentView: View {
             case .clients: return "folder"
             case .billing: return "bag"
             case .done: return "checkmark.circle"
+            case .health: return "heart.text.clipboard"
             }
         }
     }
@@ -39,6 +41,8 @@ struct ContentView: View {
                     BillingView()
                 case .done:
                     DoneView()
+                case .health:
+                    HealthView()
                 }
             }
             .frame(minWidth: 780, minHeight: 620)
