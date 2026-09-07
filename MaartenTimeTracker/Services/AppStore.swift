@@ -1,51 +1,103 @@
 import Foundation
 import SwiftUI
+import AppKit
 
 @MainActor
-final class AppStore: ObservableObject {
+final class AppStore: NSObject, ObservableObject {
     @Published var clients: [Client] = [] { didSet { save() } }
     @Published var projects: [WorkProject] = [] { didSet { save() } }
     @Published var entries: [TimeEntry] = [] { didSet { save() } }
     @Published var runningTimer: RunningTimer? { didSet { save() } }
-    @Published var finalCutMappings: [FinalCutMapping] = [] { didSet { save() } }
-    @Published var finalCutActivities: [FinalCutActivity] = [] { didSet { save() } }
-    @Published var autoSwitchFinalCut = false { didSet { save() } }
-    @Published var pendingFinalCutLabel: String = ""
 
-    let finalCutMonitor = FinalCutMonitor()
+    @Published var appActivities: [AppActivity] = [] { didSet { save() } }
+    @Published var automaticAppTrackingEnabled = true {
+        didSet {
+            activityMonitor.trackingEnabled = automaticAppTrackingEnabled
+            save()
+        }
+    }
+
+    @Published var activeFocus: ActiveFocus? { didSet { save() } }
+    @Published var focusSessions: [FocusSession] = [] { didSet { save() } }
+    @Published var parkingNotes: [ParkingNote] = [] { didSet { save() } }
+    @Published var focusJustCompleted = false
+
+    let activityMonitor = AppActivityMonitor()
+
     private var isLoading = true
+    private var heartbeat: Timer?
 
-    init() {
+    override init() {
+        super.init()
+
         let state = PersistenceController.shared.load()
         clients = state.clients
         projects = state.projects
         entries = state.entries
         runningTimer = state.runningTimer
-        finalCutMappings = state.finalCutMappings
-        finalCutActivities = state.finalCutActivities
-        autoSwitchFinalCut = state.autoSwitchFinalCut
-        isLoading = false
+        appActivities = state.appActivities
+        automaticAppTrackingEnabled = state.automaticAppTrackingEnabled
+        activeFocus = state.activeFocus
+        focusSessions = state.focusSessions
+        parkingNotes = state.parkingNotes
 
-        finalCutMonitor.onActivityEnded = { [weak self] label, start, end in
-            self?.recordFinalCutActivity(label: label, start: start, end: end)
+        activityMonitor.trackingEnabled = automaticAppTrackingEnabled
+        activityMonitor.onActivityEnded = { [weak self] name, bundle, start, end in
+            self?.recordAppActivity(name: name, bundle: bundle, start: start, end: end)
         }
-        finalCutMonitor.onDetectedLabelChanged = { [weak self] label in
-            self?.handleDetectedFinalCutLabel(label)
-        }
-        finalCutMonitor.onFrontmostChanged = { [weak self] isFrontmost in
-            guard let self else { return }
-            if !isFrontmost,
-               self.autoSwitchFinalCut,
-               self.runningTimer?.source == .finalCut {
-                self.stopTimer()
-            }
-        }
-        finalCutMonitor.start()
+        activityMonitor.start()
+
+        heartbeat = Timer.scheduledTimer(
+            timeInterval: 1.0,
+            target: self,
+            selector: #selector(heartbeatFired),
+            userInfo: nil,
+            repeats: true
+        )
+
+        isLoading = false
+        save()
+    }
+
+    deinit {
+        heartbeat?.invalidate()
+    }
+
+    @objc private func heartbeatFired() {
+        checkFocusCompletion()
     }
 
     var activeProject: WorkProject? {
         guard let id = runningTimer?.projectID else { return nil }
         return projects.first(where: { $0.id == id })
+    }
+
+    var focusRemaining: TimeInterval {
+        guard let focus = activeFocus else { return 0 }
+        return max(0, focus.endsAt.timeIntervalSinceNow)
+    }
+
+    var todayActivities: [AppActivity] {
+        appActivities.filter { Calendar.current.isDateInToday($0.start) }
+    }
+
+    var todayTrackedAppTime: TimeInterval {
+        todayActivities.reduce(0) { $0 + $1.duration }
+    }
+
+    func appSummary(for date: Date = Date()) -> [(name: String, bundle: String, duration: TimeInterval)] {
+        let calendar = Calendar.current
+        let filtered = appActivities.filter { calendar.isDate($0.start, inSameDayAs: date) }
+        var totals: [String: (name: String, bundle: String, duration: TimeInterval)] = [:]
+
+        for activity in filtered {
+            let key = activity.bundleIdentifier.isEmpty ? activity.appName : activity.bundleIdentifier
+            var current = totals[key] ?? (activity.appName, activity.bundleIdentifier, 0)
+            current.duration += activity.duration
+            totals[key] = current
+        }
+
+        return totals.values.sorted { $0.duration > $1.duration }
     }
 
     func clientName(for project: WorkProject) -> String {
@@ -65,20 +117,27 @@ final class AppStore: ObservableObject {
         }
 
         if runningTimer != nil { stopTimer() }
-        runningTimer = RunningTimer(projectID: projectID,
-                                    task: normalizedTask(task),
-                                    startedAt: Date(),
-                                    source: source)
+        runningTimer = RunningTimer(
+            projectID: projectID,
+            task: normalizedTask(task),
+            startedAt: Date(),
+            source: source
+        )
     }
 
     func stopTimer() {
         guard let timer = runningTimer else { return }
         let end = Date()
         if end > timer.startedAt {
-            entries.insert(TimeEntry(projectID: timer.projectID,
-                                     task: timer.task,
-                                     start: timer.startedAt,
-                                     end: end), at: 0)
+            entries.insert(
+                TimeEntry(
+                    projectID: timer.projectID,
+                    task: timer.task,
+                    start: timer.startedAt,
+                    end: end
+                ),
+                at: 0
+            )
         }
         runningTimer = nil
     }
@@ -96,11 +155,20 @@ final class AppStore: ObservableObject {
     func addProject(clientID: UUID, name: String, defaultTask: String = "Montage") -> WorkProject? {
         let cleaned = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty else { return nil }
-        let project = WorkProject(clientID: clientID,
-                                  name: cleaned,
-                                  defaultTask: normalizedTask(defaultTask))
+        let project = WorkProject(
+            clientID: clientID,
+            name: cleaned,
+            defaultTask: normalizedTask(defaultTask)
+        )
         projects.append(project)
         return project
+    }
+
+    func deleteClient(_ client: Client) {
+        let projectIDs = Set(projects.filter { $0.clientID == client.id }.map(\.id))
+        if let current = runningTimer, projectIDs.contains(current.projectID) { stopTimer() }
+        clients.removeAll { $0.id == client.id }
+        projects.removeAll { $0.clientID == client.id }
     }
 
     func archiveProject(_ project: WorkProject) {
@@ -109,89 +177,141 @@ final class AppStore: ObservableObject {
         projects[index].isArchived = true
     }
 
-    func deleteClient(_ client: Client) {
-        let projectIDs = Set(projects.filter { $0.clientID == client.id }.map(\.id))
-        if let current = runningTimer, projectIDs.contains(current.projectID) { stopTimer() }
-        clients.removeAll { $0.id == client.id }
-        projects.removeAll { $0.clientID == client.id }
-        finalCutMappings.removeAll { projectIDs.contains($0.projectID) }
-    }
-
     func deleteEntry(_ entry: TimeEntry) {
         entries.removeAll { $0.id == entry.id }
     }
 
     func addManualEntry(projectID: UUID, task: String, start: Date, end: Date) {
         guard end > start else { return }
-        entries.insert(TimeEntry(projectID: projectID,
-                                 task: normalizedTask(task),
-                                 start: start,
-                                 end: end), at: 0)
+        entries.insert(
+            TimeEntry(
+                projectID: projectID,
+                task: normalizedTask(task),
+                start: start,
+                end: end
+            ),
+            at: 0
+        )
     }
 
-    func addMapping(label: String, projectID: UUID, task: String) {
-        let cleaned = label.trimmingCharacters(in: .whitespacesAndNewlines)
+    func startFocus(minutes: Int, projectID: UUID?, task: String) {
+        finishActiveFocus(completed: false, stopTimerIfStarted: true)
+
+        let now = Date()
+        let cleanedTask = normalizedTask(task)
+        var startedTimer = false
+
+        if let projectID {
+            if runningTimer == nil {
+                startTimer(projectID: projectID, task: cleanedTask, source: .focus)
+                startedTimer = true
+            }
+        }
+
+        activeFocus = ActiveFocus(
+            phase: .focus,
+            startedAt: now,
+            endsAt: now.addingTimeInterval(TimeInterval(minutes * 60)),
+            plannedMinutes: minutes,
+            projectID: projectID,
+            task: cleanedTask,
+            startedProjectTimer: startedTimer
+        )
+        focusJustCompleted = false
+    }
+
+    func startBreak(minutes: Int) {
+        finishActiveFocus(completed: false, stopTimerIfStarted: true)
+        let now = Date()
+        activeFocus = ActiveFocus(
+            phase: .breakTime,
+            startedAt: now,
+            endsAt: now.addingTimeInterval(TimeInterval(minutes * 60)),
+            plannedMinutes: minutes,
+            projectID: nil,
+            task: "Pauze",
+            startedProjectTimer: false
+        )
+        focusJustCompleted = false
+    }
+
+    func stopFocus() {
+        finishActiveFocus(completed: false, stopTimerIfStarted: true)
+    }
+
+    func addParkingNote(_ text: String) {
+        let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty else { return }
-        finalCutMappings.removeAll { $0.detectedLabel.caseInsensitiveCompare(cleaned) == .orderedSame }
-        finalCutMappings.append(FinalCutMapping(detectedLabel: cleaned,
-                                                projectID: projectID,
-                                                task: normalizedTask(task)))
-        pendingFinalCutLabel = ""
-        if autoSwitchFinalCut && finalCutMonitor.isFinalCutFrontmost {
-            startTimer(projectID: projectID, task: task, source: .finalCut)
+        parkingNotes.insert(ParkingNote(text: cleaned), at: 0)
+    }
+
+    func toggleParkingNote(_ note: ParkingNote) {
+        guard let index = parkingNotes.firstIndex(where: { $0.id == note.id }) else { return }
+        parkingNotes[index].isDone.toggle()
+    }
+
+    func deleteParkingNote(_ note: ParkingNote) {
+        parkingNotes.removeAll { $0.id == note.id }
+    }
+
+    private func checkFocusCompletion() {
+        guard let focus = activeFocus, Date() >= focus.endsAt else { return }
+        finishActiveFocus(completed: true, stopTimerIfStarted: true)
+        focusJustCompleted = true
+        NSSound.beep()
+        NSApp.requestUserAttention(.informationalRequest)
+    }
+
+    private func finishActiveFocus(completed: Bool, stopTimerIfStarted: Bool) {
+        guard let focus = activeFocus else { return }
+        let now = Date()
+        let end = completed ? focus.endsAt : min(now, focus.endsAt)
+
+        focusSessions.insert(
+            FocusSession(
+                phase: focus.phase,
+                start: focus.startedAt,
+                end: end,
+                plannedMinutes: focus.plannedMinutes,
+                projectID: focus.projectID,
+                task: focus.task,
+                completed: completed
+            ),
+            at: 0
+        )
+
+        if stopTimerIfStarted,
+           focus.startedProjectTimer,
+           runningTimer?.source == .focus {
+            stopTimer()
         }
+
+        activeFocus = nil
     }
 
-    func importActivity(_ activity: FinalCutActivity, using mapping: FinalCutMapping) {
-        guard let index = finalCutActivities.firstIndex(where: { $0.id == activity.id }),
-              !finalCutActivities[index].imported else { return }
-        entries.insert(TimeEntry(projectID: mapping.projectID,
-                                 task: mapping.task,
-                                 start: activity.start,
-                                 end: activity.end), at: 0)
-        finalCutActivities[index].imported = true
-    }
-
-    func mapping(for label: String) -> FinalCutMapping? {
-        finalCutMappings.first { $0.detectedLabel.caseInsensitiveCompare(label) == .orderedSame }
-    }
-
-    private func handleDetectedFinalCutLabel(_ label: String) {
-        let cleaned = label.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleaned.isEmpty else {
-            pendingFinalCutLabel = ""
-            if autoSwitchFinalCut && runningTimer?.source == .finalCut {
-                stopTimer()
-            }
-            return
-        }
-
-        if let mapping = mapping(for: cleaned) {
-            pendingFinalCutLabel = ""
-            if autoSwitchFinalCut {
-                if runningTimer?.projectID != mapping.projectID ||
-                    runningTimer?.task != mapping.task ||
-                    runningTimer?.source != .finalCut {
-                    startTimer(projectID: mapping.projectID,
-                               task: mapping.task,
-                               source: .finalCut)
-                }
-            }
-        } else {
-            pendingFinalCutLabel = cleaned
-            if autoSwitchFinalCut && runningTimer?.source == .finalCut {
-                stopTimer()
-            }
-        }
-    }
-
-    private func recordFinalCutActivity(label: String, start: Date, end: Date) {
+    private func recordAppActivity(name: String, bundle: String, start: Date, end: Date) {
         guard end > start else { return }
-        finalCutActivities.insert(FinalCutActivity(detectedLabel: label,
-                                                   start: start,
-                                                   end: end), at: 0)
-        if finalCutActivities.count > 500 {
-            finalCutActivities.removeLast(finalCutActivities.count - 500)
+        let activity = AppActivity(
+            appName: name,
+            bundleIdentifier: bundle,
+            start: start,
+            end: end
+        )
+
+        // Merge very small adjacent slices from the same app.
+        if let first = appActivities.first,
+           first.appName == name,
+           first.bundleIdentifier == bundle,
+           start.timeIntervalSince(first.end) < 4 {
+            var merged = first
+            merged.end = end
+            appActivities[0] = merged
+        } else {
+            appActivities.insert(activity, at: 0)
+        }
+
+        if appActivities.count > 5000 {
+            appActivities.removeLast(appActivities.count - 5000)
         }
     }
 
@@ -202,13 +322,17 @@ final class AppStore: ObservableObject {
 
     private func save() {
         guard !isLoading else { return }
-        let state = PersistedState(clients: clients,
-                                   projects: projects,
-                                   entries: entries,
-                                   runningTimer: runningTimer,
-                                   finalCutMappings: finalCutMappings,
-                                   finalCutActivities: finalCutActivities,
-                                   autoSwitchFinalCut: autoSwitchFinalCut)
+        let state = PersistedState(
+            clients: clients,
+            projects: projects,
+            entries: entries,
+            runningTimer: runningTimer,
+            appActivities: appActivities,
+            automaticAppTrackingEnabled: automaticAppTrackingEnabled,
+            activeFocus: activeFocus,
+            focusSessions: focusSessions,
+            parkingNotes: parkingNotes
+        )
         PersistenceController.shared.save(state)
     }
 }
