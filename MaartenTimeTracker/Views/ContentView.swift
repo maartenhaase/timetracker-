@@ -1,11 +1,11 @@
 import SwiftUI
 
 struct ContentView: View {
-    @State private var selection: Section = .work
+    @State private var selection: Section = .today
 
     enum Section: String, CaseIterable, Identifiable {
-        case work = "Werk"
-        case clients = "Klanten"
+        case today = "Vandaag"
+        case clients = "Klanten & projecten"
         case billing = "Factureren"
         case history = "Gedaan"
         case distraction = "Afleiding"
@@ -14,8 +14,8 @@ struct ContentView: View {
 
         var icon: String {
             switch self {
-            case .work: return "play.circle"
-            case .clients: return "person.2"
+            case .today: return "sun.max"
+            case .clients: return "folder"
             case .billing: return "bag"
             case .history: return "checkmark.circle"
             case .distraction: return "arrow.uturn.backward.circle"
@@ -33,8 +33,8 @@ struct ContentView: View {
         } detail: {
             Group {
                 switch selection {
-                case .work:
-                    WorkView()
+                case .today:
+                    TodayWorkView()
                 case .clients:
                     ClientsView()
                 case .billing:
@@ -45,7 +45,7 @@ struct ContentView: View {
                     DistractionView()
                 }
             }
-            .frame(minWidth: 700, minHeight: 540)
+            .frame(minWidth: 760, minHeight: 580)
         }
     }
 }
