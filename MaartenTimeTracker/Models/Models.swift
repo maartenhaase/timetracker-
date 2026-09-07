@@ -79,6 +79,21 @@ struct ParkingNote: Identifiable, Codable, Hashable {
     var isDone: Bool = false
 }
 
+struct DayItem: Identifiable, Codable, Hashable {
+    var id: UUID = UUID()
+    var title: String
+    var targetDate: Date
+    var plannedMinutes: Int? = nil
+    var isDone: Bool = false
+    var completedAt: Date? = nil
+    var createdAt: Date = Date()
+}
+
+struct DayCapacity: Codable, Hashable {
+    var date: Date
+    var availableWorkMinutes: Int?
+}
+
 struct PersistedState: Codable {
     var clients: [Client]
     var projects: [WorkProject]
@@ -89,6 +104,8 @@ struct PersistedState: Codable {
     var activeFocus: ActiveFocus?
     var focusSessions: [FocusSession]
     var parkingNotes: [ParkingNote]
+    var dayItems: [DayItem]
+    var dayCapacities: [DayCapacity]
 
     init(
         clients: [Client] = [],
@@ -99,7 +116,9 @@ struct PersistedState: Codable {
         automaticAppTrackingEnabled: Bool = true,
         activeFocus: ActiveFocus? = nil,
         focusSessions: [FocusSession] = [],
-        parkingNotes: [ParkingNote] = []
+        parkingNotes: [ParkingNote] = [],
+        dayItems: [DayItem] = [],
+        dayCapacities: [DayCapacity] = []
     ) {
         self.clients = clients
         self.projects = projects
@@ -110,12 +129,15 @@ struct PersistedState: Codable {
         self.activeFocus = activeFocus
         self.focusSessions = focusSessions
         self.parkingNotes = parkingNotes
+        self.dayItems = dayItems
+        self.dayCapacities = dayCapacities
     }
 
     enum CodingKeys: String, CodingKey {
         case clients, projects, entries, runningTimer
         case appActivities, automaticAppTrackingEnabled
         case activeFocus, focusSessions, parkingNotes
+        case dayItems, dayCapacities
     }
 
     init(from decoder: Decoder) throws {
@@ -129,5 +151,7 @@ struct PersistedState: Codable {
         activeFocus = try c.decodeIfPresent(ActiveFocus.self, forKey: .activeFocus)
         focusSessions = try c.decodeIfPresent([FocusSession].self, forKey: .focusSessions) ?? []
         parkingNotes = try c.decodeIfPresent([ParkingNote].self, forKey: .parkingNotes) ?? []
+        dayItems = try c.decodeIfPresent([DayItem].self, forKey: .dayItems) ?? []
+        dayCapacities = try c.decodeIfPresent([DayCapacity].self, forKey: .dayCapacities) ?? []
     }
 }
