@@ -2,9 +2,10 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject var store: AppStore
-    @State private var selection: Section = .timer
+    @State private var selection: Section = .today
 
     enum Section: String, CaseIterable, Identifiable {
+        case today = "Vandaag"
         case timer = "Timer"
         case focus = "Focus"
         case activity = "Appgebruik"
@@ -15,6 +16,7 @@ struct ContentView: View {
 
         var icon: String {
             switch self {
+            case .today: return "sun.max"
             case .timer: return "timer"
             case .focus: return "scope"
             case .activity: return "macwindow"
@@ -34,6 +36,8 @@ struct ContentView: View {
         } detail: {
             Group {
                 switch selection {
+                case .today:
+                    TodayView()
                 case .timer:
                     TimerDashboardView()
                 case .focus:
@@ -46,7 +50,7 @@ struct ContentView: View {
                     HistoryView()
                 }
             }
-            .frame(minWidth: 720, minHeight: 540)
+            .frame(minWidth: 740, minHeight: 560)
         }
     }
 }
