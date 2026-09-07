@@ -126,3 +126,74 @@ final class AppActivityMonitor: NSObject, ObservableObject {
             .min() ?? 0
     }
 }
+
+
+import EventKit
+
+struct CalendarEventItem: Identifiable, Hashable {
+    var id: String
+    var title: String
+    var startDate: Date
+    var endDate: Date
+    var isAllDay: Bool
+    var calendarTitle: String
+}
+
+@MainActor
+final class CalendarService: ObservableObject {
+    @Published var authorizationStatus: EKAuthorizationStatus = EKEventStore.authorizationStatus(for: .event)
+    @Published var todayEvents: [CalendarEventItem] = []
+    @Published var tomorrowEvents: [CalendarEventItem] = []
+
+    private let eventStore = EKEventStore()
+
+    var canReadCalendar: Bool {
+        authorizationStatus == .fullAccess || authorizationStatus == .authorized
+    }
+
+    func requestAccess() {
+        if #available(macOS 14.0, *) {
+            Task {
+                do {
+                    let granted = try await eventStore.requestFullAccessToEvents()
+                    authorizationStatus = EKEventStore.authorizationStatus(for: .event)
+                    if granted { refresh() }
+                } catch {
+                    authorizationStatus = EKEventStore.authorizationStatus(for: .event)
+                }
+            }
+        }
+    }
+
+    func refresh() {
+        authorizationStatus = EKEventStore.authorizationStatus(for: .event)
+        guard canReadCalendar else {
+            todayEvents = []
+            tomorrowEvents = []
+            return
+        }
+
+        todayEvents = events(for: Date())
+        tomorrowEvents = events(for: Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date())
+    }
+
+    private func events(for date: Date) -> [CalendarEventItem] {
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: date)
+        let end = calendar.date(byAdding: .day, value: 1, to: start) ?? start.addingTimeInterval(86400)
+        let predicate = eventStore.predicateForEvents(withStart: start, end: end, calendars: nil)
+
+        return eventStore.events(matching: predicate)
+            .sorted { $0.startDate < $1.startDate }
+            .map {
+                CalendarEventItem(
+                    id: $0.eventIdentifier ?? UUID().uuidString,
+                    title: $0.title?.isEmpty == false ? $0.title! : "Afspraak",
+                    startDate: $0.startDate,
+                    endDate: $0.endDate,
+                    isAllDay: $0.isAllDay,
+                    calendarTitle: $0.calendar.title
+                )
+            }
+    }
+}
