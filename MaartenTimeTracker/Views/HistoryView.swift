@@ -26,6 +26,9 @@ struct BillingView: View {
                                 HStack {
                                     VStack(alignment: .leading, spacing: 3) {
                                         Text(block.task)
+                                        Text(store.projectName(for: block.projectID))
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
                                         Text(block.startedAt.formatted(date: .abbreviated, time: .shortened))
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
@@ -91,7 +94,7 @@ struct DoneView: View {
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(block.task)
                                     .font(.headline)
-                                Text(store.clientName(for: block.clientID))
+                                Text("\(store.clientName(for: block.clientID)) — \(store.projectName(for: block.projectID))")
                                     .foregroundStyle(.secondary)
                                 Text(block.startedAt.formatted(date: .abbreviated, time: .shortened))
                                     .font(.caption)
