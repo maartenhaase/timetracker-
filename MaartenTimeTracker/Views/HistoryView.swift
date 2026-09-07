@@ -20,7 +20,7 @@ struct BillingView: View {
                 )
             } else {
                 List {
-                    ForEach(store.uninvoicedByClient, id: \.client.id) { group in
+                    ForEach(Array(store.uninvoicedByClient.enumerated()), id: \.offset) { _, group in
                         Section {
                             ForEach(group.blocks) { block in
                                 HStack {
