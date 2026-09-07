@@ -1,27 +1,24 @@
 import SwiftUI
 
 struct ContentView: View {
-    @EnvironmentObject var store: AppStore
-    @State private var selection: Section = .today
+    @State private var selection: Section = .work
 
     enum Section: String, CaseIterable, Identifiable {
-        case today = "Vandaag"
-        case timer = "Timer"
-        case focus = "Focus"
-        case activity = "Appgebruik"
-        case projects = "Klanten & projecten"
-        case history = "Uren"
+        case work = "Werk"
+        case clients = "Klanten"
+        case billing = "Factureren"
+        case history = "Gedaan"
+        case distraction = "Afleiding"
 
         var id: String { rawValue }
 
         var icon: String {
             switch self {
-            case .today: return "sun.max"
-            case .timer: return "timer"
-            case .focus: return "scope"
-            case .activity: return "macwindow"
-            case .projects: return "folder"
-            case .history: return "clock.arrow.circlepath"
+            case .work: return "play.circle"
+            case .clients: return "person.2"
+            case .billing: return "bag"
+            case .history: return "checkmark.circle"
+            case .distraction: return "arrow.uturn.backward.circle"
             }
         }
     }
@@ -36,21 +33,19 @@ struct ContentView: View {
         } detail: {
             Group {
                 switch selection {
-                case .today:
-                    TodayView()
-                case .timer:
-                    TimerDashboardView()
-                case .focus:
-                    FocusView()
-                case .activity:
-                    ActivityView()
-                case .projects:
-                    ProjectsView()
+                case .work:
+                    WorkView()
+                case .clients:
+                    ClientsView()
+                case .billing:
+                    BillingView()
                 case .history:
-                    HistoryView()
+                    DoneView()
+                case .distraction:
+                    DistractionView()
                 }
             }
-            .frame(minWidth: 740, minHeight: 560)
+            .frame(minWidth: 700, minHeight: 540)
         }
     }
 }
