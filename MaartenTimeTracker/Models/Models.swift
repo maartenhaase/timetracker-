@@ -27,6 +27,7 @@ struct TimeEntry: Identifiable, Codable, Hashable {
 enum TimerSource: String, Codable, Hashable {
     case manual
     case focus
+    case finalCut // legacy value from the first beta; no longer used
 }
 
 struct RunningTimer: Codable, Hashable {
