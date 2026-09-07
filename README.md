@@ -35,3 +35,5 @@ De app is ad-hoc ondertekend, niet met een betaald Apple Developer ID. macOS kan
 4. Open Final Cut Pro en klik in de gewenste timeline.
 5. Bekijk **Beste herkenning** en **Ruwe labels die Final Cut prijsgeeft**.
 6. Koppel een bruikbaar label één keer aan het juiste project en de taak `Montage`.
+
+Build-trigger toegevoegd.
