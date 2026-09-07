@@ -1,97 +1,128 @@
 import SwiftUI
-import AppKit
-import UniformTypeIdentifiers
 
-struct HistoryView: View {
+struct BillingView: View {
     @EnvironmentObject var store: AppStore
-    @State private var showManual = false
-    @State private var manualProjectID: UUID?
-    @State private var manualTask = "Montage"
-    @State private var manualStart = Date().addingTimeInterval(-3600)
-    @State private var manualEnd = Date()
-
-    private var totalDuration: TimeInterval { store.entries.reduce(0) { $0 + $1.duration } }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                VStack(alignment: .leading) {
-                    Text("Uren").font(.largeTitle.bold())
-                    Text("Totaal geregistreerd: \(formatDuration(totalDuration))").foregroundStyle(.secondary)
-                }
-                Spacer()
-                Button("Handmatig toevoegen", systemImage: "plus") {
-                    manualProjectID = store.projects.first?.id
-                    showManual = true
-                }
-                Button("Exporteer CSV", systemImage: "square.and.arrow.up") { exportCSV() }
-                    .disabled(store.entries.isEmpty)
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Nog te factureren")
+                    .font(.largeTitle.bold())
+                Text("Hier staan alleen klantblokken die nog niet met het geldzakje zijn afgehandeld.")
+                    .foregroundStyle(.secondary)
             }
 
-            List {
-                ForEach(store.entries) { entry in
-                    HStack {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(store.projectName(entry.projectID)).font(.headline)
-                            Text(entry.task).foregroundStyle(.secondary)
-                            Text(entry.start.formatted(date: .abbreviated, time: .shortened))
-                                .font(.caption).foregroundStyle(.secondary)
+            if store.uninvoicedByClient.isEmpty {
+                ContentUnavailableView(
+                    "Niets open",
+                    systemImage: "checkmark.seal",
+                    description: Text("Er staat nu geen klanttijd meer open om te factureren.")
+                )
+            } else {
+                List {
+                    ForEach(store.uninvoicedByClient, id: \.client.id) { group in
+                        Section {
+                            ForEach(group.blocks) { block in
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(block.task)
+                                        Text(block.startedAt.formatted(date: .abbreviated, time: .shortened))
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    Text(billableText(group: block.billableMinutes))
+                                        .monospacedDigit()
+                                }
+                            }
+                        } header: {
+                            HStack {
+                                Text(group.client.name)
+                                Spacer()
+                                Text("te factureren: \(billableText(group: group.billableMinutes))")
+                                Button {
+                                    store.markClientInvoiced(group.client)
+                                } label: {
+                                    Label("Gefactureerd", systemImage: "bag.fill")
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.small)
+                            }
                         }
-                        Spacer()
-                        Text(formatDuration(entry.duration)).monospacedDigit()
-                        Button(role: .destructive) { store.deleteEntry(entry) } label: { Image(systemName: "trash") }
-                            .buttonStyle(.borderless)
-                    }.padding(.vertical, 4)
+                    }
                 }
+                .listStyle(.inset)
             }
         }
         .padding(28)
-        .sheet(isPresented: $showManual) {
-            VStack(alignment: .leading, spacing: 14) {
-                Text("Tijd handmatig toevoegen").font(.title2.bold())
-                Picker("Project", selection: $manualProjectID) {
-                    ForEach(store.projects) { project in
-                        Text("\(store.clientName(for: project)) — \(project.name)").tag(Optional(project.id))
-                    }
-                }
-                TextField("Taak", text: $manualTask)
-                DatePicker("Start", selection: $manualStart)
-                DatePicker("Einde", selection: $manualEnd)
-                HStack {
-                    Spacer()
-                    Button("Annuleer") { showManual = false }
-                    Button("Toevoegen") {
-                        guard let projectID = manualProjectID else { return }
-                        store.addManualEntry(projectID: projectID, task: manualTask, start: manualStart, end: manualEnd)
-                        showManual = false
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(manualProjectID == nil || manualEnd <= manualStart)
-                }
-            }.padding(24).frame(width: 430)
-        }
     }
 
-    private func exportCSV() {
-        let header = "client,project,task,start,end,hours\n"
-        let lines = store.entries.map { entry -> String in
-            let project = store.projects.first(where: { $0.id == entry.projectID })
-            let client = project.flatMap { p in store.clients.first(where: { $0.id == p.clientID })?.name } ?? ""
-            let projectName = project?.name ?? ""
-            let hours = entry.duration / 3600
-            return [client, projectName, entry.task, entry.start.ISO8601Format(), entry.end.ISO8601Format(), String(format: "%.2f", hours)]
-                .map(csvEscape).joined(separator: ",")
-        }
-        let csv = header + lines.joined(separator: "\n")
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [.commaSeparatedText]
-        panel.nameFieldStringValue = "uren.csv"
-        if panel.runModal() == .OK, let url = panel.url {
-            try? csv.write(to: url, atomically: true, encoding: .utf8)
-        }
+    private func billableText(group minutes: Int) -> String {
+        if minutes < 60 { return "\(minutes) min" }
+        let h = minutes / 60
+        let m = minutes % 60
+        return m == 0 ? "\(h) uur" : "\(h)u \(m)m"
     }
+}
 
-    private func csvEscape(_ value: String) -> String {
-        "\"\(value.replacingOccurrences(of: "\"", with: "\"\""))\""
+struct DoneView: View {
+    @EnvironmentObject var store: AppStore
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Gedaan")
+                    .font(.largeTitle.bold())
+                Text("Achteraf kijken wat je wél hebt gedaan.")
+                    .foregroundStyle(.secondary)
+            }
+
+            if store.workBlocks.isEmpty {
+                ContentUnavailableView(
+                    "Nog geen blokken",
+                    systemImage: "checkmark.circle",
+                    description: Text("Zodra je een taak afrondt of stopt, verschijnt hij hier.")
+                )
+            } else {
+                List {
+                    ForEach(store.workBlocks) { block in
+                        HStack(alignment: .top) {
+                            Image(systemName: block.result == .done ? "checkmark.circle.fill" : "circle.dashed")
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(block.task)
+                                    .font(.headline)
+                                Text(store.clientName(for: block.clientID))
+                                    .foregroundStyle(.secondary)
+                                Text(block.startedAt.formatted(date: .abbreviated, time: .shortened))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+
+                            if block.clientID != nil {
+                                VStack(alignment: .trailing, spacing: 2) {
+                                    Text("\(block.billableMinutes) min facturabel")
+                                    if block.invoiced {
+                                        Label("gefactureerd", systemImage: "bag.fill")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
+
+                            Button(role: .destructive) {
+                                store.deleteBlock(block)
+                            } label: {
+                                Image(systemName: "trash")
+                            }
+                            .buttonStyle(.borderless)
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+                .listStyle(.inset)
+            }
+        }
+        .padding(28)
     }
 }
