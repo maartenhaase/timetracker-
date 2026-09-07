@@ -9,25 +9,20 @@ struct MaartenTimeTrackerApp: App {
             ContentView()
                 .environmentObject(store)
         }
-        .defaultSize(width: 980, height: 650)
+        .defaultSize(width: 920, height: 640)
 
         MenuBarExtra {
             MenuBarView()
                 .environmentObject(store)
         } label: {
-            if let timer = store.runningTimer {
-                TimelineView(.periodic(from: .now, by: 60)) { context in
-                    Label(shortDuration(context.date.timeIntervalSince(timer.startedAt)), systemImage: "timer")
-                }
+            if store.isDistracted {
+                Label("Afgeleid", systemImage: "exclamationmark.circle.fill")
+            } else if store.activeBlock != nil {
+                Label("Bezig", systemImage: "play.circle.fill")
             } else {
-                Label("Time", systemImage: "timer")
+                Label("Werk", systemImage: "circle")
             }
         }
         .menuBarExtraStyle(.window)
-    }
-
-    private func shortDuration(_ value: TimeInterval) -> String {
-        let totalMinutes = max(0, Int(value) / 60)
-        return String(format: "%d:%02d", totalMinutes / 60, totalMinutes % 60)
     }
 }
