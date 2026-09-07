@@ -6,15 +6,19 @@ struct ContentView: View {
 
     enum Section: String, CaseIterable, Identifiable {
         case timer = "Timer"
+        case focus = "Focus"
+        case activity = "Appgebruik"
         case projects = "Klanten & projecten"
-        case finalCut = "Final Cut"
         case history = "Uren"
+
         var id: String { rawValue }
+
         var icon: String {
             switch self {
             case .timer: return "timer"
+            case .focus: return "scope"
+            case .activity: return "macwindow"
             case .projects: return "folder"
-            case .finalCut: return "film"
             case .history: return "clock.arrow.circlepath"
             }
         }
@@ -23,19 +27,26 @@ struct ContentView: View {
     var body: some View {
         NavigationSplitView {
             List(Section.allCases, selection: $selection) { section in
-                Label(section.rawValue, systemImage: section.icon).tag(section)
+                Label(section.rawValue, systemImage: section.icon)
+                    .tag(section)
             }
             .navigationTitle("Maarten Time")
         } detail: {
             Group {
                 switch selection {
-                case .timer: TimerDashboardView()
-                case .projects: ProjectsView()
-                case .finalCut: FinalCutView()
-                case .history: HistoryView()
+                case .timer:
+                    TimerDashboardView()
+                case .focus:
+                    FocusView()
+                case .activity:
+                    ActivityView()
+                case .projects:
+                    ProjectsView()
+                case .history:
+                    HistoryView()
                 }
             }
-            .frame(minWidth: 700, minHeight: 520)
+            .frame(minWidth: 720, minHeight: 540)
         }
     }
 }
