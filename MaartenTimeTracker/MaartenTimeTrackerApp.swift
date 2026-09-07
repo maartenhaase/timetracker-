@@ -9,7 +9,7 @@ struct MaartenTimeTrackerApp: App {
             ContentView()
                 .environmentObject(store)
         }
-        .defaultSize(width: 920, height: 640)
+        .defaultSize(width: 980, height: 720)
 
         MenuBarExtra {
             MenuBarView()
@@ -18,9 +18,13 @@ struct MaartenTimeTrackerApp: App {
             if store.isDistracted {
                 Label("Afgeleid", systemImage: "exclamationmark.circle.fill")
             } else if store.activeBlock != nil {
-                Label("Bezig", systemImage: "play.circle.fill")
+                Label("Flow", systemImage: "play.circle.fill")
+            } else if !store.parkedItems.isEmpty {
+                Label("Geparkeerd", systemImage: "pause.circle.fill")
+            } else if store.isTodayClosed {
+                Label("Gesloten", systemImage: "checkmark.seal")
             } else {
-                Label("Werk", systemImage: "circle")
+                Label("Flow", systemImage: "circle")
             }
         }
         .menuBarExtraStyle(.window)

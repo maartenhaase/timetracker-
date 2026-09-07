@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct MenuBarView: View {
     @EnvironmentObject var store: AppStore
@@ -6,25 +7,30 @@ struct MenuBarView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if let block = store.activeBlock {
-                Text(store.clientName(for: block.clientID))
+                Text(store.clientName(forProjectID: block.projectID))
                     .font(.caption)
                     .foregroundStyle(.secondary)
+
                 Text(block.task)
                     .font(.headline)
                     .lineLimit(2)
+
+                Text(block.category)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
 
                 if store.isDistracted {
                     Button {
                         store.endDistraction()
                     } label: {
-                        Label("Terug naar taak", systemImage: "arrow.uturn.backward")
+                        Label("IK BEN TERUG", systemImage: "arrow.uturn.backward")
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(.green)
                 } else {
                     HStack {
                         Button("Klaar") {
-                            store.finishBlock(done: true)
+                            store.finishActiveBlock(done: true)
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(.green)
@@ -35,15 +41,38 @@ struct MenuBarView: View {
                         .buttonStyle(.borderedProminent)
                         .tint(.red)
                     }
+
+                    Button("Open app om veilig te parkeren") {
+                        NSApp.activate(ignoringOtherApps: true)
+                    }
+                    .buttonStyle(.borderless)
                 }
-            } else {
-                Text("Geen taak actief")
+            } else if let parked = store.parkedItems.first {
+                Text("Veilig geparkeerd")
+                    .font(.caption)
                     .foregroundStyle(.secondary)
-                Text("Open Maarten Time en kies één ding om aan te beginnen.")
+
+                Text(parked.task)
+                    .font(.headline)
+
+                Text(parked.resumeNote)
+                    .font(.caption)
+
+                Button("Hervat") {
+                    store.resumeParked(parked)
+                }
+                .buttonStyle(.borderedProminent)
+            } else {
+                Text(store.isTodayClosed ? "Werkdag gesloten" : "Geen blok actief")
+                    .foregroundStyle(.secondary)
+
+                Text(store.isTodayClosed
+                     ? "De rest mag wachten."
+                     : "Open Maarten Flow en kies één blok.")
                     .font(.caption)
             }
         }
         .padding(14)
-        .frame(width: 300)
+        .frame(width: 320)
     }
 }

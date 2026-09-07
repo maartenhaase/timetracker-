@@ -1,130 +1,232 @@
 import Foundation
 import SwiftUI
 
-struct TodayWorkView: View {
+struct TodayView: View {
     @EnvironmentObject var store: AppStore
 
     @State private var planProjectID: UUID?
+    @State private var planCategory = WorkProject.standardTaskNames[0]
     @State private var planTitle = ""
     @State private var planMinutes = 30
 
     @State private var doneProjectID: UUID?
+    @State private var doneCategory = WorkProject.standardTaskNames[0]
     @State private var doneTitle = ""
     @State private var doneMinutes = 30
 
-    @State private var isRecovery = false
+    @State private var showParkSheet = false
+    @State private var resumeNote = ""
 
     private let durations = [15, 30, 45, 60, 90]
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Vandaag")
-                        .font(.largeTitle.bold())
-                    Text("Plan in blokken. Wat je al gedaan hebt mag net zo goed meetellen.")
-                        .foregroundStyle(.secondary)
-                }
+                header
 
-                if let block = store.activeBlock {
-                    activeCard(block)
+                if let active = store.activeBlock {
+                    activeBlockCard(active)
+                } else if store.isTodayClosed {
+                    closedWorkdayCard
+                    doneTodayCard
+                    balanceCard
                 } else {
-                    plannedTasksCard
-                    addPlanCard
+                    if !store.parkedItems.isEmpty {
+                        parkedCard
+                    }
+
+                    plannedCard
+                    addBlockCard
                     alreadyDoneCard
                     doneTodayCard
+                    balanceCard
+
+                    if store.recoverySuggestionMinutes > 0 {
+                        recoveryCard
+                    }
+
+                    closeWorkdayCard
                 }
 
                 if let message = store.lastRewardMessage {
                     Label(message, systemImage: "checkmark.seal.fill")
                         .font(.headline)
-                        .padding(16)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 14))
+                        .flowCard()
                 }
             }
             .padding(28)
         }
+        .sheet(isPresented: $showParkSheet) {
+            parkingSheet
+        }
+        .onChange(of: planProjectID) { _, newValue in
+            let names = store.taskNames(for: newValue)
+            if !names.contains(planCategory) {
+                planCategory = names.first ?? "Werk"
+            }
+        }
+        .onChange(of: doneProjectID) { _, newValue in
+            let names = store.taskNames(for: newValue)
+            if !names.contains(doneCategory) {
+                doneCategory = names.first ?? "Werk"
+            }
+        }
     }
 
-    private var plannedTasksCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Label("Wat wil je vandaag doen?", systemImage: "list.bullet")
-                    .font(.title3.bold())
-                Spacer()
-                if !store.openTodayTasks.isEmpty {
-                    Text("\(store.openTodayTasks.count) open")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text("Vandaag")
+                .font(.largeTitle.bold())
 
-            if store.openTodayTasks.isEmpty {
-                Text("Nog niets gepland. Voeg alleen toe wat vandaag realistisch voelt.")
+            if store.isTodayClosed {
+                Text("Je werkdag is gesloten. De rest hoeft nu niet in je hoofd.")
                     .foregroundStyle(.secondary)
             } else {
-                ForEach(store.openTodayTasks) { task in
-                    HStack(spacing: 12) {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(task.title)
-                                .font(.headline)
-                            HStack(spacing: 6) {
-                                Text(projectLabel(task.projectID))
-                                Text("•")
-                                Text(durationText(task.plannedMinutes))
+                Text(store.focusMessage)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var plannedCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("Wat zou fijn zijn als het vandaag lukt?", systemImage: "list.bullet")
+                    .font(.title3.bold())
+                Spacer()
+                Text("mogelijkheden, geen schuldcontract")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if store.startableTodayTasks.isEmpty {
+                Text("Nog geen open blokken. Voeg alleen toe wat vandaag echt ruimte mag krijgen.")
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(store.startableTodayTasks) { task in
+                    VStack(spacing: 8) {
+                        HStack(spacing: 12) {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(task.title)
+                                    .font(.headline)
+
+                                Text("\(projectLabel(task.projectID)) · \(task.category) · \(durationText(task.plannedMinutes))")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
                             }
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+
+                            Spacer()
+
+                            Button {
+                                store.startDailyTask(task)
+                            } label: {
+                                Label("BEGIN", systemImage: "play.fill")
+                            }
+                            .buttonStyle(.borderedProminent)
+
+                            if store.recoverySuggestionMinutes > 0 {
+                                Menu {
+                                    Button("Begin als herstelblok") {
+                                        store.startDailyTask(task, asRecovery: true)
+                                    }
+                                } label: {
+                                    Image(systemName: "ellipsis.circle")
+                                }
+                                .menuStyle(.borderlessButton)
+                            }
+
+                            Button(role: .destructive) {
+                                store.deleteDailyTask(task)
+                            } label: {
+                                Image(systemName: "xmark")
+                            }
+                            .buttonStyle(.borderless)
+                        }
+
+                        if task.id != store.startableTodayTasks.last?.id {
+                            Divider()
+                        }
+                    }
+                }
+            }
+        }
+        .flowCard()
+    }
+
+    private var parkedCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Veilig geparkeerd", systemImage: "pause.circle.fill")
+                .font(.title3.bold())
+
+            Text("Deze blokken hoef je niet mentaal vast te houden. De volgende stap staat erbij.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            ForEach(store.parkedItems) { item in
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(item.task)
+                                .font(.headline)
+                            Text("\(projectLabel(item.projectID)) · \(item.category)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
 
                         Spacer()
 
                         Button {
-                            store.startDailyTask(task, isRecovery: false)
+                            store.resumeParked(item)
                         } label: {
-                            Label("BEGIN", systemImage: "play.fill")
+                            Label("HERVAT", systemImage: "play.fill")
                         }
                         .buttonStyle(.borderedProminent)
+                    }
 
-                        Button(role: .destructive) {
-                            store.deleteDailyTask(task)
-                        } label: {
-                            Image(systemName: "xmark")
+                    Label(item.resumeNote, systemImage: "arrow.right")
+                        .foregroundStyle(.secondary)
+
+                    HStack {
+                        Text("Geparkeerd \(item.parkedAt.formatted(date: .abbreviated, time: .shortened))")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+
+                        Spacer()
+
+                        Button("Laat los") {
+                            store.removeParked(item)
                         }
                         .buttonStyle(.borderless)
+                        .font(.caption)
                     }
-                    .padding(.vertical, 4)
+                }
+                .padding(.vertical, 4)
 
-                    if task.id != store.openTodayTasks.last?.id {
-                        Divider()
-                    }
+                if item.id != store.parkedItems.last?.id {
+                    Divider()
                 }
             }
         }
-        .softCard()
+        .flowCard()
     }
 
-    private var addPlanCard: some View {
+    private var addBlockCard: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Voeg een blok toe")
+            Label("Blok toevoegen", systemImage: "plus.circle")
                 .font(.headline)
 
-            Picker("Project", selection: $planProjectID) {
-                Text("Algemeen / intern").tag(UUID?.none)
-                ForEach(store.projects) { project in
-                    Text(projectPickerLabel(project))
-                        .tag(Optional(project.id))
-                }
-            }
+            projectPicker(selection: $planProjectID)
+            categoryPicker(projectID: planProjectID, selection: $planCategory)
 
-            TextField("Wat wil je doen?", text: $planTitle)
+            TextField("Wat ga je concreet doen? (optioneel)", text: $planTitle)
 
             durationPicker(selection: $planMinutes)
 
             Button {
-                store.addDailyTask(
+                _ = store.addDailyTask(
                     projectID: planProjectID,
+                    category: planCategory,
                     title: planTitle,
                     plannedMinutes: planMinutes
                 )
@@ -136,189 +238,330 @@ struct TodayWorkView: View {
                     .padding(.vertical, 7)
             }
             .buttonStyle(.borderedProminent)
-            .disabled(planTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
-        .softCard()
+        .flowCard()
     }
 
     private var alreadyDoneCard: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        DisclosureGroup {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Ook werk dat nooit op je lijst stond mag achteraf gewoon meetellen.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                projectPicker(selection: $doneProjectID)
+                categoryPicker(projectID: doneProjectID, selection: $doneCategory)
+                TextField("Wat heb je gedaan? (optioneel)", text: $doneTitle)
+                durationPicker(selection: $doneMinutes)
+
+                Button {
+                    store.recordDoneToday(
+                        projectID: doneProjectID,
+                        category: doneCategory,
+                        title: doneTitle,
+                        minutes: doneMinutes
+                    )
+                    doneTitle = ""
+                    doneMinutes = 30
+                } label: {
+                    Label("Tel mee", systemImage: "checkmark")
+                }
+                .buttonStyle(.borderedProminent)
+            }
+            .padding(.top, 10)
+        } label: {
             Label("Wat heb je al gedaan?", systemImage: "sparkles")
                 .font(.headline)
-
-            Text("Ook iets dat nooit op je lijst stond mag achteraf gewoon meetellen.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Picker("Project", selection: $doneProjectID) {
-                Text("Algemeen / intern").tag(UUID?.none)
-                ForEach(store.projects) { project in
-                    Text(projectPickerLabel(project))
-                        .tag(Optional(project.id))
-                }
-            }
-
-            TextField("Wat heb je gedaan?", text: $doneTitle)
-
-            durationPicker(selection: $doneMinutes)
-
-            Button {
-                store.recordDoneToday(
-                    projectID: doneProjectID,
-                    title: doneTitle,
-                    plannedMinutes: doneMinutes
-                )
-                doneTitle = ""
-                doneMinutes = 30
-            } label: {
-                Label("Tel mee", systemImage: "checkmark")
-            }
-            .disabled(doneTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
-        .softCard()
+        .flowCard()
     }
 
     private var doneTodayCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Vandaag gedaan", systemImage: "checkmark.circle.fill")
+            Label("Dit heb je vandaag gedaan", systemImage: "checkmark.circle.fill")
                 .font(.title3.bold())
 
             if store.doneTodayTasks.isEmpty {
-                Text("Nog niets geregistreerd. Dat zegt niets over hoe je dag loopt.")
+                Text("Nog niets geregistreerd. Dat betekent niet dat er niets gebeurd is.")
                     .foregroundStyle(.secondary)
             } else {
-                ForEach(store.doneTodayTasks.reversed()) { task in
-                    HStack {
+                ForEach(store.doneTodayTasks.prefix(10)) { task in
+                    HStack(alignment: .top) {
                         Image(systemName: "checkmark.circle.fill")
                         VStack(alignment: .leading, spacing: 2) {
                             Text(task.title)
-                            Text("\(projectLabel(task.projectID)) • \(durationText(task.plannedMinutes))")
+                            Text("\(projectLabel(task.projectID)) · \(task.category) · \(durationText(task.plannedMinutes))")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
                         Spacer()
                     }
-                    .padding(.vertical, 3)
                 }
             }
         }
-        .softCard()
+        .flowCard()
+    }
+
+    private var balanceCard: some View {
+        DisclosureGroup {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Geen timers en geen score. Hooguit één klein anker buiten werk.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                balanceRow(.together)
+                balanceRow(.family)
+                balanceRow(.selfCare)
+            }
+            .padding(.top, 10)
+        } label: {
+            Label("Buiten werk: Samen · Gezin · Zelf", systemImage: "heart")
+                .font(.headline)
+        }
+        .flowCard()
+    }
+
+    private var recoveryCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Herstelruimte", systemImage: "arrow.counterclockwise.circle")
+                .font(.headline)
+
+            Text("Er waren vandaag wat afleidmomenten. Als het jou helpt om rustig af te sluiten, is één herstelblok van ongeveer \(durationText(store.recoverySuggestionMinutes)) genoeg.")
+                .foregroundStyle(.secondary)
+
+            Text("Niet verplicht, en dit wordt morgen niet als schuld meegenomen.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .flowCard()
+    }
+
+    private var closeWorkdayCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Werkdag afronden", systemImage: "door.left.hand.closed")
+                .font(.title3.bold())
+
+            if !store.openTodayTasks.isEmpty {
+                Text("Wat nog open staat hoeft niet automatisch mee naar morgen. Kies alleen bewust wat je wilt meenemen.")
+                    .foregroundStyle(.secondary)
+
+                ForEach(store.openTodayTasks) { task in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(task.title)
+                            Text(projectLabel(task.projectID))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button("Morgen") {
+                            store.moveTaskToTomorrow(task)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
+                }
+            } else {
+                Text("Er staan geen geplande blokken meer open.")
+                    .foregroundStyle(.secondary)
+            }
+
+            if !store.parkedItems.isEmpty {
+                Label("Geparkeerde blokken blijven veilig bewaard.", systemImage: "lock")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Button {
+                store.closeWorkday()
+            } label: {
+                Label("WERKDAG SLUITEN", systemImage: "checkmark.seal")
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+        }
+        .flowCard()
+    }
+
+    private var closedWorkdayCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Werkdag gesloten", systemImage: "checkmark.seal.fill")
+                .font(.title2.bold())
+
+            Text("De open blokken hoeven vanavond niet door je hoofd te blijven lopen.")
+                .foregroundStyle(.secondary)
+
+            if !store.parkedItems.isEmpty {
+                Text("Ook je geparkeerde werk blijft bewaard met de volgende stap.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Button("Toch weer openen") {
+                store.reopenWorkday()
+            }
+            .buttonStyle(.borderless)
+        }
+        .flowCard()
     }
 
     @ViewBuilder
-    private func activeCard(_ block: ActiveWorkBlock) -> some View {
+    private func activeBlockCard(_ block: ActiveWorkBlock) -> some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             let focused = focusedSeconds(block, at: context.date)
-            let target = TimeInterval((block.plannedMinutes ?? 30) * 60)
+            let target = TimeInterval(max(15, block.plannedMinutes) * 60)
             let progress = min(1, focused / max(1, target))
 
             VStack(alignment: .leading, spacing: 18) {
-                VStack(alignment: .leading, spacing: 4) {
-                    if let project = store.activeProject {
-                        Text(projectPickerLabel(project))
-                            .font(.headline)
-                            .foregroundStyle(.secondary)
-                    } else if let client = store.activeClient {
-                        Text(client.name)
-                            .font(.headline)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Text("Algemeen / intern")
-                            .font(.headline)
-                            .foregroundStyle(.secondary)
-                    }
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(projectLabel(block.projectID))
+                        .font(.headline)
+                        .foregroundStyle(.secondary)
+
+                    Text(block.category.uppercased())
+                        .font(.caption.bold())
+                        .foregroundStyle(.secondary)
 
                     Text(block.task)
                         .font(.title.bold())
 
-                    if let planned = block.plannedMinutes {
-                        Text("Gepland blok: \(durationText(planned))")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+                    Text("Blok: \(durationText(block.plannedMinutes))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
 
                 if store.isDistracted {
-                    Label("Afleiding loopt nu apart.", systemImage: "pause.circle.fill")
-                        .font(.headline)
+                    VStack(alignment: .leading, spacing: 12) {
+                        Label("AFGELEID", systemImage: "exclamationmark.circle.fill")
+                            .font(.title2.bold())
+                            .foregroundStyle(.red)
 
-                    Button {
-                        store.endDistraction()
-                    } label: {
-                        Label("TERUG NAAR TAAK", systemImage: "arrow.uturn.backward")
-                            .font(.title3.bold())
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.green)
+                        Text("De focustijd staat stil. Zodra je het merkt, hoef je alleen terug te keren.")
+                            .foregroundStyle(.secondary)
 
-                    Text("Deze tijd telt niet mee als focustijd en gaat naar je inhaalpotje.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else {
-                    VStack(alignment: .leading, spacing: 8) {
-                        ProgressView(value: progress)
-
-                        Text(blockStatus(focused, target: target))
-                            .font(.headline)
-
-                        if focused >= target {
-                            Text("Je geplande blok staat. Alleen doorgaan als dat nu nog logisch is.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        } else {
-                            Text("De balk is richting, geen verplichting.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-
-                    HStack(spacing: 12) {
                         Button {
-                            store.finishBlock(done: true)
+                            store.endDistraction()
                         } label: {
-                            Label("KLAAR", systemImage: "checkmark")
+                            Label("IK BEN TERUG", systemImage: "arrow.uturn.backward")
                                 .font(.title3.bold())
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 14)
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(.green)
+                    }
+                } else {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ProgressView(value: progress)
+                        Text(blockStatus(focused, target: target))
+                            .font(.headline)
+
+                        Text(progress >= 1
+                             ? "Je geplande focusblok staat. Alleen doorgaan als dat nog logisch is."
+                             : "De balk is richting, geen verplichting om de hele taak af te krijgen.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    HStack(spacing: 10) {
+                        Button {
+                            store.finishActiveBlock(done: true)
+                        } label: {
+                            Label("KLAAR", systemImage: "checkmark")
+                                .font(.headline)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 11)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.green)
+
+                        Button {
+                            resumeNote = ""
+                            showParkSheet = true
+                        } label: {
+                            Label("PARKEREN", systemImage: "pause.fill")
+                                .font(.headline)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 11)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.orange)
 
                         Button {
                             store.startDistraction()
                         } label: {
                             Label("AFGELEID", systemImage: "exclamationmark")
-                                .font(.title3.bold())
+                                .font(.headline)
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 14)
+                                .padding(.vertical, 11)
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(.red)
                     }
 
-                    Button("Stop blok, taak blijft open") {
-                        store.finishBlock(done: false)
+                    Button("Stop blok; taak blijft open") {
+                        store.finishActiveBlock(done: false)
                     }
                     .buttonStyle(.borderless)
                     .foregroundStyle(.secondary)
                 }
 
-                if store.recoveryBalanceSeconds > 30 && !block.isRecovery {
-                    Toggle("Dit blok ook als inhalen tellen", isOn: $isRecovery)
-                        .disabled(true)
-                        .hidden()
-                }
-
                 if block.isRecovery {
-                    Label("Dit blok telt ook als inhaaltijd.", systemImage: "arrow.counterclockwise.circle")
+                    Label("Dit blok telt ook als herstelblok.", systemImage: "arrow.counterclockwise.circle")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
             .padding(24)
             .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 18))
+        }
+    }
+
+    private var parkingSheet: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text("Blok veilig parkeren")
+                .font(.title2.bold())
+
+            Text("Schrijf alleen de eerstvolgende stap op. Dan hoeft je hoofd het blok niet vast te houden.")
+                .foregroundStyle(.secondary)
+
+            TextField("Bijv. verder bij 03:42 en logo vervangen", text: $resumeNote)
+
+            HStack {
+                Spacer()
+                Button("Annuleer") {
+                    showParkSheet = false
+                }
+                Button("Parkeer veilig") {
+                    store.parkActiveBlock(resumeNote: resumeNote)
+                    showParkSheet = false
+                    resumeNote = ""
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(24)
+        .frame(width: 470)
+    }
+
+    private func projectPicker(selection: Binding<UUID?>) -> some View {
+        Picker("Project", selection: selection) {
+            Text("Algemeen / intern").tag(UUID?.none)
+
+            ForEach(store.projects.filter { !$0.isArchived }) { project in
+                Text(projectPickerLabel(project))
+                    .tag(Optional(project.id))
+            }
+        }
+    }
+
+    private func categoryPicker(projectID: UUID?, selection: Binding<String>) -> some View {
+        Picker("Soort werk", selection: selection) {
+            ForEach(store.taskNames(for: projectID), id: \.self) { name in
+                Text(name).tag(name)
+            }
         }
     }
 
@@ -339,17 +582,53 @@ struct TodayWorkView: View {
         }
     }
 
-    private func projectPickerLabel(_ project: WorkProject) -> String {
-        let client = store.clients.first(where: { $0.id == project.clientID })?.name ?? "Onbekend"
-        return "\(client) — \(project.name)"
+    private func balanceRow(_ kind: BalanceKind) -> some View {
+        let day = store.balanceForToday()
+        let currentText: String
+        let isDone: Bool
+
+        switch kind {
+        case .together:
+            currentText = day.togetherText
+            isDone = day.togetherDone
+        case .family:
+            currentText = day.familyText
+            isDone = day.familyDone
+        case .selfCare:
+            currentText = day.selfText
+            isDone = day.selfDone
+        }
+
+        return HStack(spacing: 10) {
+            Button {
+                store.toggleBalance(kind: kind)
+            } label: {
+                Image(systemName: isDone ? "checkmark.circle.fill" : "circle")
+            }
+            .buttonStyle(.plain)
+
+            Label(kind.title, systemImage: kind.icon)
+                .frame(width: 90, alignment: .leading)
+
+            TextField(
+                kind == .together ? "bijv. even samen koffie" :
+                kind == .family ? "bijv. bewust spelen / eten" :
+                "bijv. muziek, wandelen of niets",
+                text: Binding(
+                    get: { currentBalanceText(kind) },
+                    set: { store.updateBalanceText(kind: kind, text: $0) }
+                )
+            )
+        }
     }
 
-    private func projectLabel(_ projectID: UUID?) -> String {
-        guard let projectID,
-              let project = store.projects.first(where: { $0.id == projectID }) else {
-            return "Algemeen"
+    private func currentBalanceText(_ kind: BalanceKind) -> String {
+        let day = store.balanceForToday()
+        switch kind {
+        case .together: return day.togetherText
+        case .family: return day.familyText
+        case .selfCare: return day.selfText
         }
-        return projectPickerLabel(project)
     }
 
     private func focusedSeconds(_ block: ActiveWorkBlock, at date: Date) -> TimeInterval {
@@ -362,33 +641,27 @@ struct TodayWorkView: View {
 
     private func blockStatus(_ seconds: TimeInterval, target: TimeInterval) -> String {
         let fraction = seconds / max(1, target)
+
         if fraction < 0.25 {
-            return "Je bent begonnen. Houd alleen dit ene ding vast."
-        } else if fraction < 0.65 {
-            return "Je zit goed in je blok."
+            return "Je bent begonnen. Houd alleen dit ene blok vast."
+        } else if fraction < 0.70 {
+            return "Je zit in je blok."
         } else if fraction < 1 {
-            return "Je bent een flink stuk op weg."
+            return "Je hebt al een flink stuk aandacht gegeven."
         } else {
-            return "Je geplande blok is neergezet."
+            return "Dit focusblok staat."
         }
     }
 
-    private func durationText(_ minutes: Int) -> String {
-        switch minutes {
-        case 15: return "15 min"
-        case 30: return "30 min"
-        case 45: return "45 min"
-        case 60: return "1 uur"
-        case 90: return "1,5 uur"
-        default: return "\(minutes) min"
-        }
+    private func projectPickerLabel(_ project: WorkProject) -> String {
+        "\(store.clientName(for: project.clientID)) — \(project.name)"
     }
-}
 
-private extension View {
-    func softCard() -> some View {
-        self
-            .padding(18)
-            .background(.quaternary.opacity(0.42), in: RoundedRectangle(cornerRadius: 16))
+    private func projectLabel(_ projectID: UUID?) -> String {
+        guard let projectID,
+              let project = store.projects.first(where: { $0.id == projectID }) else {
+            return "Algemeen / intern"
+        }
+        return projectPickerLabel(project)
     }
 }

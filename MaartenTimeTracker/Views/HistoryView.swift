@@ -8,45 +8,64 @@ struct BillingView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Nog te factureren")
                     .font(.largeTitle.bold())
-                Text("Hier staan alleen klantblokken die nog niet met het geldzakje zijn afgehandeld.")
+                Text("Hier staan alleen de exacte kwartieren die administratief nog open zijn.")
                     .foregroundStyle(.secondary)
             }
 
-            if store.uninvoicedByClient.isEmpty {
+            if store.billingProjectSummaries.isEmpty {
                 ContentUnavailableView(
                     "Niets open",
                     systemImage: "checkmark.seal",
-                    description: Text("Er staat nu geen klanttijd meer open om te factureren.")
+                    description: Text("Er staat nu geen klanttijd open om te factureren.")
                 )
             } else {
                 List {
-                    ForEach(Array(store.uninvoicedByClient.enumerated()), id: \.offset) { _, group in
+                    ForEach(store.billingProjectSummaries) { projectSummary in
                         Section {
-                            ForEach(group.blocks) { block in
-                                HStack {
+                            ForEach(projectSummary.units) { unit in
+                                HStack(alignment: .top) {
                                     VStack(alignment: .leading, spacing: 3) {
-                                        Text(block.task)
-                                        Text(store.projectName(for: block.projectID))
-                                            .font(.caption)
+                                        Text(unit.task)
+                                            .font(.headline)
+                                        Text(unit.category)
                                             .foregroundStyle(.secondary)
-                                        Text(block.startedAt.formatted(date: .abbreviated, time: .shortened))
+                                        Text(unit.firstDate.formatted(date: .abbreviated, time: .omitted))
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
                                     }
+
                                     Spacer()
-                                    Text(billableText(group: block.billableMinutes))
+
+                                    Text(durationText(unit.billableMinutes))
+                                        .font(.headline)
                                         .monospacedDigit()
+
+                                    Button {
+                                        store.markBillingUnitInvoiced(unit.id)
+                                    } label: {
+                                        Image(systemName: "bag.fill")
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .help("Markeer dit werk als gefactureerd")
                                 }
+                                .padding(.vertical, 3)
                             }
                         } header: {
                             HStack {
-                                Text(group.client.name)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(store.clientName(for: projectSummary.clientID))
+                                    Text(store.projectName(for: projectSummary.projectID))
+                                        .font(.caption)
+                                }
+
                                 Spacer()
-                                Text("te factureren: \(billableText(group: group.billableMinutes))")
+
+                                Text("open: \(durationText(projectSummary.totalBillableMinutes))")
+
                                 Button {
-                                    store.markClientInvoiced(group.client)
+                                    store.markProjectInvoiced(projectSummary.projectID)
                                 } label: {
-                                    Label("Gefactureerd", systemImage: "bag.fill")
+                                    Label("Alles gefactureerd", systemImage: "bag.fill")
                                 }
                                 .buttonStyle(.borderedProminent)
                                 .controlSize(.small)
@@ -59,72 +78,90 @@ struct BillingView: View {
         }
         .padding(28)
     }
-
-    private func billableText(group minutes: Int) -> String {
-        if minutes < 60 { return "\(minutes) min" }
-        let h = minutes / 60
-        let m = minutes % 60
-        return m == 0 ? "\(h) uur" : "\(h)u \(m)m"
-    }
 }
 
 struct DoneView: View {
     @EnvironmentObject var store: AppStore
+    @State private var showDistractions = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Gedaan")
                     .font(.largeTitle.bold())
-                Text("Achteraf kijken wat je wél hebt gedaan.")
+                Text("Terugkijken naar wat er wél gebeurd is. Geen achterstallige score.")
                     .foregroundStyle(.secondary)
             }
 
-            if store.workBlocks.isEmpty {
+            Label(store.focusMessage, systemImage: "scope")
+                .font(.headline)
+                .flowCard()
+
+            if store.doneTasksByDay.isEmpty {
                 ContentUnavailableView(
-                    "Nog geen blokken",
+                    "Nog niets geregistreerd",
                     systemImage: "checkmark.circle",
-                    description: Text("Zodra je een taak afrondt of stopt, verschijnt hij hier.")
+                    description: Text("Afgeronde of achteraf toegevoegde taken verschijnen hier.")
                 )
             } else {
                 List {
-                    ForEach(store.workBlocks) { block in
-                        HStack(alignment: .top) {
-                            Image(systemName: block.result == .done ? "checkmark.circle.fill" : "circle.dashed")
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(block.task)
-                                    .font(.headline)
-                                Text("\(store.clientName(for: block.clientID)) — \(store.projectName(for: block.projectID))")
-                                    .foregroundStyle(.secondary)
-                                Text(block.startedAt.formatted(date: .abbreviated, time: .shortened))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
+                    ForEach(store.doneTasksByDay, id: \.date) { group in
+                        Section(group.date.formatted(date: .complete, time: .omitted)) {
+                            ForEach(group.tasks) { task in
+                                HStack(alignment: .top) {
+                                    Image(systemName: "checkmark.circle.fill")
 
-                            if block.clientID != nil {
-                                VStack(alignment: .trailing, spacing: 2) {
-                                    Text("\(block.billableMinutes) min facturabel")
-                                    if block.invoiced {
-                                        Label("gefactureerd", systemImage: "bag.fill")
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(task.title)
+                                            .font(.headline)
+
+                                        Text("\(store.clientName(forProjectID: task.projectID)) — \(store.projectName(for: task.projectID))")
+                                            .foregroundStyle(.secondary)
+
+                                        Text("\(task.category) · blok \(durationText(task.plannedMinutes))")
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
                                     }
-                                }
-                            }
 
-                            Button(role: .destructive) {
-                                store.deleteBlock(block)
-                            } label: {
-                                Image(systemName: "trash")
+                                    Spacer()
+                                }
+                                .padding(.vertical, 3)
                             }
-                            .buttonStyle(.borderless)
                         }
-                        .padding(.vertical, 4)
                     }
                 }
                 .listStyle(.inset)
             }
+
+            DisclosureGroup(isExpanded: $showDistractions) {
+                VStack(alignment: .leading, spacing: 8) {
+                    if store.distractionPeriods.isEmpty {
+                        Text("Nog geen afleidmomenten geregistreerd.")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(store.distractionPeriods.prefix(30)) { period in
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(period.task)
+                                    Text(period.startedAt.formatted(date: .abbreviated, time: .shortened))
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+
+                                Spacer()
+
+                                Text(minutesText(period.duration))
+                                    .monospacedDigit()
+                            }
+                        }
+                    }
+                }
+                .padding(.top, 8)
+            } label: {
+                Label("Afleidmomenten — alleen als je details wilt zien", systemImage: "eye")
+                    .foregroundStyle(.secondary)
+            }
+            .flowCard()
         }
         .padding(28)
     }

@@ -7,8 +7,7 @@ struct ContentView: View {
         case today = "Vandaag"
         case clients = "Klanten & projecten"
         case billing = "Factureren"
-        case history = "Gedaan"
-        case distraction = "Afleiding"
+        case done = "Gedaan"
 
         var id: String { rawValue }
 
@@ -17,8 +16,7 @@ struct ContentView: View {
             case .today: return "sun.max"
             case .clients: return "folder"
             case .billing: return "bag"
-            case .history: return "checkmark.circle"
-            case .distraction: return "arrow.uturn.backward.circle"
+            case .done: return "checkmark.circle"
             }
         }
     }
@@ -29,23 +27,21 @@ struct ContentView: View {
                 Label(section.rawValue, systemImage: section.icon)
                     .tag(section)
             }
-            .navigationTitle("Maarten Time")
+            .navigationTitle("Maarten Flow")
         } detail: {
             Group {
                 switch selection {
                 case .today:
-                    TodayWorkView()
+                    TodayView()
                 case .clients:
-                    ClientsView()
+                    ClientsProjectsView()
                 case .billing:
                     BillingView()
-                case .history:
+                case .done:
                     DoneView()
-                case .distraction:
-                    DistractionView()
                 }
             }
-            .frame(minWidth: 760, minHeight: 580)
+            .frame(minWidth: 780, minHeight: 620)
         }
     }
 }

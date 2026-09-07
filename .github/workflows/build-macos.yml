@@ -1,4 +1,4 @@
-name: Build Maarten Time for macOS
+name: Build Maarten Flow for macOS
 
 on:
   workflow_dispatch:
@@ -14,26 +14,38 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Show Xcode version
         run: xcodebuild -version
+
       - name: Build Release app
         run: |
           set -euo pipefail
           rm -rf build
           mkdir -p build
-          xcodebuild -project MaartenTimeTracker.xcodeproj -target MaartenTimeTracker -configuration Release -sdk macosx ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO CODE_SIGNING_ALLOWED=NO CONFIGURATION_BUILD_DIR="$PWD/build"
+          xcodebuild \
+            -project MaartenTimeTracker.xcodeproj \
+            -target MaartenTimeTracker \
+            -configuration Release \
+            -sdk macosx \
+            ARCHS="arm64 x86_64" \
+            ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            CONFIGURATION_BUILD_DIR="$PWD/build"
+
       - name: Prepare standalone app
         run: |
           set -euo pipefail
           APP="build/MaartenTimeTracker.app"
           test -d "$APP"
           /usr/bin/codesign --force --deep --sign - "$APP"
-          mv "$APP" "build/Maarten Time.app"
-          /usr/bin/ditto -c -k --sequesterRsrc --keepParent "build/Maarten Time.app" "build/Maarten-Time.zip"
+          mv "$APP" "build/Maarten Flow.app"
+          /usr/bin/ditto -c -k --sequesterRsrc --keepParent "build/Maarten Flow.app" "build/Maarten-Flow.zip"
+
       - name: Upload Mac app
         uses: actions/upload-artifact@v4
         with:
-          name: Maarten-Time-macOS
-          path: build/Maarten-Time.zip
+          name: Maarten-Flow-macOS
+          path: build/Maarten-Flow.zip
           if-no-files-found: error
           retention-days: 30

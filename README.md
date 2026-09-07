@@ -1,39 +1,40 @@
-# Maarten Time
+# Maarten Flow
 
-Een kleine native macOS-tijdtracker voor Maarten, met Final Cut Pro-herkenning.
+Een rustige native macOS-app voor werken in blokken, veilig schakelen en facturatie op de achtergrond.
 
-## Functies
+## Ontwerpprincipes
 
-- klanten en projecten
-- taken per timer
-- start/stop vanuit hoofdvenster en menubalk
-- handmatig uren toevoegen
-- CSV-export
-- lokale JSON-opslag in `~/Library/Application Support/MaartenTimeTracker/`
-- Final Cut Pro detecteren via de macOS Accessibility API
-- Final Cut-label éénmalig koppelen aan klant/project/taak
-- optioneel automatisch wisselen van timer
-- Final Cut-activiteit onthouden om vergeten uren later toe te voegen
+- Geen productiviteitsscore, streaks of rode achterstallige lijst.
+- Eén werkblok tegelijk.
+- Een focusblok telt ook als de taak nog niet af is.
+- **Parkeren** bewaart de eerstvolgende stap vóór een onderbreking.
+- **Afgeleid** registreert afleiding apart; terugkeren is de belangrijkste actie.
+- Open werk gaat niet automatisch als schuld mee naar morgen.
+- Exacte tijden zijn vooral zichtbaar bij **Factureren**, niet op het dagelijkse hoofdscherm.
+- Buiten werk zijn er optionele ankers voor **Samen, Gezin en Zelf**, zonder timer.
+
+## Vaste projecttaken
+
+Elk nieuw project krijgt automatisch:
+
+- Concepting / voorwerk
+- Opnames
+- Ruwe montage
+- Afronden / strak maken
+- Klantcontact
+- Opleveren / export
+- Extra's
+
+Per project kunnen extra taaksoorten worden toegevoegd.
+
+## Facturatie
+
+Werksegmenten die bij hetzelfde geplande blok horen blijven één facturatie-eenheid, ook als een blok tussendoor wordt geparkeerd en hervat. Daardoor veroorzaakt schakelen niet automatisch extra minimumkwartieren.
+
+Open klanttijd wordt naar boven afgerond op kwartieren, met minimaal 15 minuten per facturatie-eenheid.
 
 ## Privacy
 
-Er is geen account en geen server. De urenregistratie blijft lokaal op de Mac.
-De Accessibility-toestemming wordt alleen gebruikt om zichtbare UI-labels uit Final Cut Pro te lezen.
+Alle gegevens blijven lokaal in ~/Library/Application Support/MaartenTimeTracker/data.json.
 
-## Installeren uit GitHub Actions
-
-De workflow `.github/workflows/build-macos.yml` bouwt een universele Release-app voor Apple Silicon en Intel.
-Het resultaat heet `Maarten-Time-macOS` en bevat `Maarten-Time.zip`.
-
-De app is ad-hoc ondertekend, niet met een betaald Apple Developer ID. macOS kan daarom bij de eerste start melden dat de ontwikkelaar niet kan worden geverifieerd. Gebruik dan rechtermuisknop op de app > Open.
-
-## Eerste Final Cut-test
-
-1. Start Maarten Time.
-2. Open het tabblad Final Cut.
-3. Klik op **Vraag toestemming** en sta Maarten Time toe onder Systeeminstellingen > Privacy en beveiliging > Toegankelijkheid.
-4. Open Final Cut Pro en klik in de gewenste timeline.
-5. Bekijk **Beste herkenning** en **Ruwe labels die Final Cut prijsgeeft**.
-6. Koppel een bruikbaar label één keer aan het juiste project en de taak `Montage`.
-
-Build-trigger toegevoegd.
+Er is geen account, cloudserver of abonnement nodig.
