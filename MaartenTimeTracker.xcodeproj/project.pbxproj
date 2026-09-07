@@ -1,0 +1,43 @@
+// !$*UTF8*$!
+{
+ archiveVersion = 1;
+ classes = {};
+ objectVersion = 56;
+ objects = {
+/* Begin PBXBuildFile section */
+A1 = {isa = PBXBuildFile; fileRef = B1;}; A2 = {isa = PBXBuildFile; fileRef = B2;}; A3 = {isa = PBXBuildFile; fileRef = B3;}; A4 = {isa = PBXBuildFile; fileRef = B4;}; A5 = {isa = PBXBuildFile; fileRef = B5;}; A6 = {isa = PBXBuildFile; fileRef = B6;}; A7 = {isa = PBXBuildFile; fileRef = B7;}; A8 = {isa = PBXBuildFile; fileRef = B8;}; A9 = {isa = PBXBuildFile; fileRef = B9;}; A10 = {isa = PBXBuildFile; fileRef = B10;}; A11 = {isa = PBXBuildFile; fileRef = B11;};
+/* End PBXBuildFile section */
+/* Begin PBXFileReference section */
+B0 = {isa = PBXFileReference; explicitFileType = wrapper.application; path = MaartenTimeTracker.app; sourceTree = BUILT_PRODUCTS_DIR;};
+B1 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MaartenTimeTrackerApp.swift; sourceTree = "<group>";};
+B2 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>";};
+B3 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistenceController.swift; sourceTree = "<group>";};
+B4 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinalCutMonitor.swift; sourceTree = "<group>";};
+B5 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStore.swift; sourceTree = "<group>";};
+B6 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>";};
+B7 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimerDashboardView.swift; sourceTree = "<group>";};
+B8 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectsView.swift; sourceTree = "<group>";};
+B9 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinalCutView.swift; sourceTree = "<group>";};
+B10 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>";};
+B11 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>";};
+/* End PBXFileReference section */
+C1 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0;};
+D0 = {isa = PBXGroup; children = (D1,D5); sourceTree = "<group>";};
+D1 = {isa = PBXGroup; children = (B1,D2,D3,D4); path = MaartenTimeTracker; sourceTree = "<group>";};
+D2 = {isa = PBXGroup; children = (B2); path = Models; sourceTree = "<group>";};
+D3 = {isa = PBXGroup; children = (B3,B4,B5); path = Services; sourceTree = "<group>";};
+D4 = {isa = PBXGroup; children = (B6,B7,B8,B9,B10,B11); path = Views; sourceTree = "<group>";};
+D5 = {isa = PBXGroup; children = (B0); name = Products; sourceTree = "<group>";};
+E1 = {isa = PBXNativeTarget; buildConfigurationList = H1; buildPhases = (F1,C1,F2); buildRules = (); dependencies = (); name = MaartenTimeTracker; productName = MaartenTimeTracker; productReference = B0; productType = "com.apple.product-type.application";};
+E0 = {isa = PBXProject; attributes = {BuildIndependentTargetsInParallel = 1; LastUpgradeCheck = 1500;}; buildConfigurationList = H0; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en,Base); mainGroup = D0; productRefGroup = D5; projectDirPath = ""; projectRoot = ""; targets = (E1);};
+F2 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0;};
+F1 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A1,A2,A3,A4,A5,A6,A7,A8,A9,A10,A11); runOnlyForDeploymentPostprocessing = 0;};
+G1 = {isa = XCBuildConfiguration; buildSettings = {ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ENABLE_MODULES = YES; DEBUG_INFORMATION_FORMAT = dwarf; MACOSX_DEPLOYMENT_TARGET = 14.0; ONLY_ACTIVE_ARCH = YES; SDKROOT = macosx; SWIFT_OPTIMIZATION_LEVEL = "-Onone";}; name = Debug;};
+G2 = {isa = XCBuildConfiguration; buildSettings = {ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ENABLE_MODULES = YES; DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym"; MACOSX_DEPLOYMENT_TARGET = 14.0; SDKROOT = macosx; SWIFT_COMPILATION_MODE = wholemodule; SWIFT_OPTIMIZATION_LEVEL = "-O";}; name = Release;};
+G3 = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; ENABLE_APP_SANDBOX = NO; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_CFBundleDisplayName = "Maarten Time"; INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business"; MARKETING_VERSION = 0.1; PRODUCT_BUNDLE_IDENTIFIER = nl.maartenhaase.timetracker; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_VERSION = 5.0;}; name = Debug;};
+G4 = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; ENABLE_APP_SANDBOX = NO; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_CFBundleDisplayName = "Maarten Time"; INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business"; MARKETING_VERSION = 0.1; PRODUCT_BUNDLE_IDENTIFIER = nl.maartenhaase.timetracker; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_VERSION = 5.0;}; name = Release;};
+H0 = {isa = XCConfigurationList; buildConfigurations = (G1,G2); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release;};
+H1 = {isa = XCConfigurationList; buildConfigurations = (G3,G4); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release;};
+ };
+ rootObject = E0;
+}
