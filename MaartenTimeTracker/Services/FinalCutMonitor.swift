@@ -74,6 +74,12 @@ final class AppActivityMonitor: NSObject, ObservableObject {
         currentAppName = name
         currentBundleIdentifier = bundle
 
+        // Looking at the tracker itself should not inflate automatic work activity.
+        if bundle == "nl.maartenhaase.timetracker" {
+            finishCurrentSession(at: now)
+            return
+        }
+
         if sessionAppName != name || sessionBundleIdentifier != bundle {
             finishCurrentSession(at: now)
             sessionAppName = name
