@@ -5,7 +5,7 @@ struct ContentView: View {
 
     enum Section: String, CaseIterable, Identifiable {
         case today = "Vandaag"
-        case clients = "Klanten & projecten"
+        case work = "Werk"
         case billing = "Factureren"
         case done = "Gedaan"
         case health = "Gezondheid"
@@ -15,7 +15,7 @@ struct ContentView: View {
         var icon: String {
             switch self {
             case .today: return "sun.max"
-            case .clients: return "folder"
+            case .work: return "folder"
             case .billing: return "bag"
             case .done: return "checkmark.circle"
             case .health: return "heart.text.clipboard"
@@ -33,19 +33,14 @@ struct ContentView: View {
         } detail: {
             Group {
                 switch selection {
-                case .today:
-                    TodayView()
-                case .clients:
-                    ClientsProjectsView()
-                case .billing:
-                    BillingView()
-                case .done:
-                    DoneView()
-                case .health:
-                    HealthView()
+                case .today: TodayView()
+                case .work: WorkCRMView()
+                case .billing: BillingView()
+                case .done: DoneView()
+                case .health: HealthView()
                 }
             }
-            .frame(minWidth: 780, minHeight: 620)
+            .frame(minWidth: 800, minHeight: 650)
         }
     }
 }

@@ -10,11 +10,9 @@ struct MenuBarView: View {
                 Text(store.clientName(forProjectID: block.projectID))
                     .font(.caption)
                     .foregroundStyle(.secondary)
-
                 Text(block.task)
                     .font(.headline)
                     .lineLimit(2)
-
                 Text(block.category)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -42,7 +40,7 @@ struct MenuBarView: View {
                         .tint(.red)
                     }
 
-                    Button("Open app om veilig te parkeren") {
+                    Button("Open app om te parkeren / wisselen") {
                         NSApp.activate(ignoringOtherApps: true)
                     }
                     .buttonStyle(.borderless)
@@ -51,13 +49,10 @@ struct MenuBarView: View {
                 Text("Veilig geparkeerd")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-
                 Text(parked.task)
                     .font(.headline)
-
                 Text(parked.resumeNote)
                     .font(.caption)
-
                 Button("Hervat") {
                     store.resumeParked(parked)
                 }
@@ -65,12 +60,10 @@ struct MenuBarView: View {
             } else {
                 Text(store.isTodayClosed ? "Werkdag gesloten" : "Geen blok actief")
                     .foregroundStyle(.secondary)
-
-                Text(store.isTodayClosed
-                     ? "De rest mag wachten."
-                     : "Open Maarten Flow en kies één blok.")
+                Text(store.isTodayClosed ? "De rest mag wachten." : "Open Flow en kies één blok.")
                     .font(.caption)
             }
+
             Divider()
 
             HStack {
@@ -83,12 +76,12 @@ struct MenuBarView: View {
 
                 Spacer()
 
-                Text("vandaag (store.coffeeTodayCount)")
+                Text("vandaag \(store.coffeeTodayCount)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }
         .padding(14)
-        .frame(width: 320)
+        .frame(width: 330)
     }
 }
