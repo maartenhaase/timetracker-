@@ -323,6 +323,17 @@ final class AppStore: ObservableObject {
         companyItems[i].isArchived=true;save()
     }
 
+    func restoreCompanyItem(_ item: CompanyWorkItem) {
+        guard let i = companyItems.firstIndex(where: { $0.id == item.id }) else { return }
+        companyItems[i].isArchived = false
+        save()
+    }
+
+    func deleteCompanyItem(_ item: CompanyWorkItem) {
+        companyItems.removeAll { $0.id == item.id }
+        save()
+    }
+
     func recordDoneToday(projectID:UUID?,category:String,title:String,minutes:Int){
         let cat=clean(category);let t=clean(title);let effective=t.isEmpty ? (cat.isEmpty ? "Werk":cat):t
         guard !effective.isEmpty else{return}
@@ -618,6 +629,14 @@ final class AppStore: ObservableObject {
     }
 
     private func migrateLegacyData(){
+        for i in clients.indices {
+            let lower = clients[i].name.lowercased()
+            if clients[i].kind == .business &&
+                (lower.contains("trouw") || lower.contains("bruiloft") || lower.contains("wedding")) {
+                clients[i].kind = .wedding
+            }
+        }
+
         for i in projects.indices{
             if let client=clients.first(where:{$0.id==projects[i].clientID}){
                 if client.kind == .wedding{projects[i].kind = .wedding}
