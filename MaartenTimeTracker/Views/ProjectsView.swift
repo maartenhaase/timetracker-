@@ -218,7 +218,13 @@ struct WorkCRMView: View {
                             }
 
                             HStack {
+                                Button("Maak bruiloft") {
+                                    store.setClientKind(client, kind: .wedding)
+                                }
+                                .buttonStyle(.borderless)
+
                                 Spacer()
+
                                 Button("Klant archiveren") { store.archiveClient(client) }
                                     .buttonStyle(.borderless)
                             }
@@ -306,9 +312,24 @@ struct WorkCRMView: View {
                 let archived = store.companyItems.filter { $0.isArchived }
                 if !archived.isEmpty {
                     DisclosureGroup("Archief (\(archived.count))") {
-                        ForEach(archived) { item in
-                            Text(item.title)
+                        VStack(alignment: .leading, spacing: 8) {
+                            ForEach(archived) { item in
+                                HStack {
+                                    Text(item.title)
+                                    Spacer()
+                                    Button("Herstel") {
+                                        store.restoreCompanyItem(item)
+                                    }
+                                    Button(role: .destructive) {
+                                        store.deleteCompanyItem(item)
+                                    } label: {
+                                        Image(systemName: "trash")
+                                    }
+                                    .buttonStyle(.borderless)
+                                }
+                            }
                         }
+                        .padding(.top, 8)
                     }
                     .flowCard()
                 }
