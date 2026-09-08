@@ -136,7 +136,7 @@ final class AppStore: ObservableObject {
         let n=clean(names); guard !n.isEmpty else{return}
         let client=Client(name:n,kind:.wedding,email:clean(email),phone:clean(phone))
         clients.append(client)
-        projects.append(WorkProject(clientID:client.id,name:"Trouwfilm",kind:.wedding,weddingDate:weddingDate,deadline:weddingDate,weddingStepIndex:1))
+        projects.append(WorkProject(clientID: client.id, name: "Trouwfilm", kind: .wedding, deadline: weddingDate, weddingDate: weddingDate, weddingStepIndex: 1))
         save()
     }
 
@@ -170,7 +170,7 @@ final class AppStore: ObservableObject {
 
     func addCustomTask(projectID:UUID,name:String){
         let n=clean(name); guard !n.isEmpty,let i=projects.firstIndex(where:{$0.id==projectID}) else{return}
-        if !projects[i].taskNames.contains(where:{$0.caseInsensitiveCompare(n)==.orderedSame}){projects[i].taskNames.append(n);save()}
+        if !projects[i].taskNames.contains(where: { $0.caseInsensitiveCompare(n) == .orderedSame }) { projects[i].taskNames.append(n); save() }
     }
 
     func nextCRMStage(for project:WorkProject)->String{
@@ -281,7 +281,7 @@ final class AppStore: ObservableObject {
     // MARK: - Day planning
 
     @discardableResult
-    func addDailyTask(projectID:UUID?,category:String,title:String,plannedMinutes:Int,kind:DailyTaskKind=.normal,deadline:Date?=nil)->DailyTask?{
+    func addDailyTask(projectID: UUID?, category: String, title: String, plannedMinutes: Int, kind: DailyTaskKind = .normal, deadline: Date? = nil) -> DailyTask? {
         let cat=clean(category); let t=clean(title); let effective=t.isEmpty ? (cat.isEmpty ? "Werk":cat):t
         guard !effective.isEmpty else{return nil}
         var finalKind=kind
@@ -298,7 +298,7 @@ final class AppStore: ObservableObject {
     func makeDeadlineTask(_ task:DailyTask){
         clearOtherDeadlineTasks()
         guard let i=dailyTasks.firstIndex(where:{$0.id==task.id}) else{return}
-        dailyTasks[i].kind=.deadline
+        dailyTasks[i].kind = .deadline
         if dailyTasks[i].plannedMinutes<45 {dailyTasks[i].plannedMinutes=60}
         save()
     }
@@ -471,18 +471,74 @@ final class AppStore: ObservableObject {
     func logSleep(sleepHours:Double,fallAsleepMinutes:Int,rested:Int,note:String){sleepEntries.append(SleepEntry(date:Date(),sleepHours:max(0,sleepHours),fallAsleepMinutes:max(0,fallAsleepMinutes),rested:min(5,max(1,rested)),note:clean(note)));save()}
     func deleteSleep(_ e:SleepEntry){sleepEntries.removeAll{$0.id==e.id};save()}
 
-    func healthReport(days:Int)->String{
-        let safe=max(1,days),now=Date(),start=Calendar.current.date(byAdding:.day,value:-(safe-1),to:Calendar.current.startOfDay(for:now)) ?? now
-        let meds=medicationEntries.filter{$0.date>=start&&$0.date<=now}.sorted{$0.date<$1.date}
-        let coffees=coffeeEntries.filter{$0.date>=start&&$0.date<=now}.sorted{$0.date<$1.date}
-        let checks=wellbeingEntries.filter{$0.date>=start&&$0.date<=now}.sorted{$0.date<$1.date}
-        let sleeps=sleepEntries.filter{$0.date>=start&&$0.date<=now}.sorted{$0.date<$1.date}
-        func avg(_ v:[Double])->String{guard !v.isEmpty else{return "—"};return String(format:"%.1f",v.reduce(0,+)/Double(v.count))}
-        var lines=["MAARTEN FLOW — GEZONDHEIDSLOG","Periode: \(start.formatted(date:.abbreviated,time:.omitted)) t/m \(now.formatted(date:.abbreviated,time:.omitted))","","SAMENVATTING","Koffie: \(coffees.count) koppen","Slaap gemiddeld: \(avg(sleeps.map{$0.sleepHours})) uur","Inslapen gemiddeld: \(avg(sleeps.map{Double($0.fallAsleepMinutes)})) min","Uitgerust: \(avg(sleeps.map{Double($0.rested)}))/5","Rust in hoofd: \(avg(checks.map{Double($0.calm)}))/5","Focus: \(avg(checks.map{Double($0.focus)}))/5","Energie: \(avg(checks.map{Double($0.energy)}))/5","Stemming: \(avg(checks.map{Double($0.mood)}))/5","","DAGLOG"]
-        for x in 0..<safe{guard let day=Calendar.current.date(byAdding:.day,value:x,to:start) else{continue};let dm=meds.filter{Calendar.current.isDate($0.date,inSameDayAs:day)},dc=coffees.filter{Calendar.current.isDate($0.date,inSameDayAs:day)},dw=checks.filter{Calendar.current.isDate($0.date,inSameDayAs:day)},ds=sleeps.filter{Calendar.current.isDate($0.date,inSameDayAs:day)};guard !dm.isEmpty||!dc.isEmpty||!dw.isEmpty||!ds.isEmpty else{continue};lines.append("");lines.append(day.formatted(date:.complete,time:.omitted));for s in ds{lines.append("  Slaap: \(String(format:"%.1f",s.sleepHours)) uur · inslapen \(s.fallAsleepMinutes) min · uitgerust \(s.rested)/5\(s.note.isEmpty ? "":" · \(s.note)")")};for med in dm{lines.append("  Medicatie \(med.date.formatted(date:.omitted,time:.shortened)): \(med.name) \(formatDose(med.dose)) \(med.unit)\(med.note.isEmpty ? "":" · \(med.note)")")};if !dc.isEmpty{lines.append("  Koffie: \(dc.count) · "+dc.map{$0.date.formatted(date:.omitted,time:.shortened)}.joined(separator:", "))};for w in dw{lines.append("  Check-in \(w.date.formatted(date:.omitted,time:.shortened)): rust \(w.calm)/5 · focus \(w.focus)/5 · energie \(w.energy)/5 · stemming \(w.mood)/5\(w.note.isEmpty ? "":" · \(w.note)")")}}
-        lines.append("");lines.append("Dit rapport beschrijft alleen wat is gelogd en geeft geen doserings- of behandeladvies.")
-        return lines.joined(separator:"\n")
+    func healthReport(days: Int) -> String {
+        let safe = max(1, days)
+        let now = Date()
+        let start = Calendar.current.date(
+            byAdding: .day,
+            value: -(safe - 1),
+            to: Calendar.current.startOfDay(for: now)
+        ) ?? now
+
+        let meds = medicationEntries.filter { $0.date >= start && $0.date <= now }.sorted { $0.date < $1.date }
+        let coffees = coffeeEntries.filter { $0.date >= start && $0.date <= now }.sorted { $0.date < $1.date }
+        let checks = wellbeingEntries.filter { $0.date >= start && $0.date <= now }.sorted { $0.date < $1.date }
+        let sleeps = sleepEntries.filter { $0.date >= start && $0.date <= now }.sorted { $0.date < $1.date }
+
+        func avg(_ values: [Double]) -> String {
+            guard !values.isEmpty else { return "—" }
+            return String(format: "%.1f", values.reduce(0, +) / Double(values.count))
+        }
+
+        var lines = [
+            "MAARTEN FLOW — GEZONDHEIDSLOG",
+            "Periode: \(start.formatted(date: .abbreviated, time: .omitted)) t/m \(now.formatted(date: .abbreviated, time: .omitted))",
+            "",
+            "SAMENVATTING",
+            "Koffie: \(coffees.count) koppen",
+            "Slaap gemiddeld: \(avg(sleeps.map { $0.sleepHours })) uur",
+            "Inslapen gemiddeld: \(avg(sleeps.map { Double($0.fallAsleepMinutes) })) min",
+            "Uitgerust: \(avg(sleeps.map { Double($0.rested) }))/5",
+            "Rust in hoofd: \(avg(checks.map { Double($0.calm) }))/5",
+            "Focus: \(avg(checks.map { Double($0.focus) }))/5",
+            "Energie: \(avg(checks.map { Double($0.energy) }))/5",
+            "Stemming: \(avg(checks.map { Double($0.mood) }))/5",
+            "",
+            "DAGLOG"
+        ]
+
+        for offset in 0..<safe {
+            guard let day = Calendar.current.date(byAdding: .day, value: offset, to: start) else { continue }
+            let dayMeds = meds.filter { Calendar.current.isDate($0.date, inSameDayAs: day) }
+            let dayCoffee = coffees.filter { Calendar.current.isDate($0.date, inSameDayAs: day) }
+            let dayChecks = checks.filter { Calendar.current.isDate($0.date, inSameDayAs: day) }
+            let daySleeps = sleeps.filter { Calendar.current.isDate($0.date, inSameDayAs: day) }
+
+            guard !dayMeds.isEmpty || !dayCoffee.isEmpty || !dayChecks.isEmpty || !daySleeps.isEmpty else { continue }
+
+            lines.append("")
+            lines.append(day.formatted(date: .complete, time: .omitted))
+
+            for sleep in daySleeps {
+                lines.append("  Slaap: \(String(format: "%.1f", sleep.sleepHours)) uur · inslapen \(sleep.fallAsleepMinutes) min · uitgerust \(sleep.rested)/5\(sleep.note.isEmpty ? "" : " · \(sleep.note)")")
+            }
+            for med in dayMeds {
+                lines.append("  Medicatie \(med.date.formatted(date: .omitted, time: .shortened)): \(med.name) \(formatDose(med.dose)) \(med.unit)\(med.note.isEmpty ? "" : " · \(med.note)")")
+            }
+            if !dayCoffee.isEmpty {
+                let times = dayCoffee.map { $0.date.formatted(date: .omitted, time: .shortened) }.joined(separator: ", ")
+                lines.append("  Koffie: \(dayCoffee.count) · \(times)")
+            }
+            for check in dayChecks {
+                lines.append("  Check-in \(check.date.formatted(date: .omitted, time: .shortened)): rust \(check.calm)/5 · focus \(check.focus)/5 · energie \(check.energy)/5 · stemming \(check.mood)/5\(check.note.isEmpty ? "" : " · \(check.note)")")
+            }
+        }
+
+        lines.append("")
+        lines.append("Dit rapport beschrijft alleen wat is gelogd en geeft geen doserings- of behandeladvies.")
+        return lines.joined(separator: "\n")
     }
+
     func copyHealthReport(days:Int){NSPasteboard.general.clearContents();NSPasteboard.general.setString(healthReport(days:days),forType:.string);lastRewardMessage="Rapport gekopieerd."}
 
     // MARK: - Helpers
@@ -501,7 +557,14 @@ final class AppStore: ObservableObject {
     private func isStrongFocus(_ b:WorkBlock)->Bool{let target=TimeInterval(max(15,b.plannedMinutes)*60),threshold=min(30*60,max(12*60,target*0.75));return b.focusedSeconds>=threshold}
     private func ensureTodayBalance()->Int{if let i=balanceDays.firstIndex(where:{Calendar.current.isDateInToday($0.date)}){return i};balanceDays.append(BalanceDay(date:Calendar.current.startOfDay(for:Date())));return balanceDays.count-1}
     private func reopenWorkdayIfNeeded(){if isTodayClosed{closedWorkdays.removeAll{Calendar.current.isDateInToday($0.date)}}}
-    private func clearOtherDeadlineTasks(){for i in dailyTasks.indices where Calendar.current.isDateInToday(dailyTasks[i].date)&&!dailyTasks[i].isDone&&dailyTasks[i].kind == .deadline{dailyTasks[i].kind = dailyTasks[i].plannedMinutes<=5 ? .quick:.normal}}
+    private func clearOtherDeadlineTasks() {
+        for i in dailyTasks.indices where
+            Calendar.current.isDateInToday(dailyTasks[i].date) &&
+            !dailyTasks[i].isDone &&
+            dailyTasks[i].kind == .deadline {
+            dailyTasks[i].kind = dailyTasks[i].plannedMinutes <= 5 ? .quick : .normal
+        }
+    }
 
     private func suggestionScore(_ p:WorkProject)->Int{
         var score=0
